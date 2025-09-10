@@ -37,6 +37,27 @@ pub mod memory_manager;
 #[deny(missing_docs)]
 pub mod module;
 pub mod object_file;
+// TODO: Update conditionals for `orc` and `orc2` module if
+//       future or past versions are supported in the future.
+#[cfg(any(
+    feature = "llvm8-0",
+    feature = "llvm9-0",
+    feature = "llvm10-0",
+    feature = "llvm11-0",
+))]
+pub mod orc;
+#[cfg(any(
+    feature = "llvm12-0",
+    feature = "llvm13-0",
+    feature = "llvm14-0",
+    feature = "llvm15-0",
+    feature = "llvm16-0",
+    feature = "llvm17-0",
+    feature = "llvm18-1",
+    feature = "llvm19-1",
+    feature = "llvm20-1",
+))]
+pub mod orc;
 pub mod passes;
 pub mod targets;
 pub mod types;
