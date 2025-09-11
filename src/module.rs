@@ -170,7 +170,7 @@ pub enum Linkage {
 /// The underlying module will be disposed when dropping this object.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Module<'ctx> {
-    data_layout: RefCell<Option<DataLayout>>,
+    pub(crate) data_layout: RefCell<Option<DataLayout>>,
     pub(crate) module: Cell<LLVMModuleRef>,
     pub(crate) owned_by_ee: RefCell<Option<ExecutionEngine<'ctx>>>,
     _marker: PhantomData<&'ctx Context>,
