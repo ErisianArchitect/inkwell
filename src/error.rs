@@ -72,7 +72,7 @@ impl LLVMErrorString {
     /// Creates an [LLVMErrorString] from a pointer to [LLVMOpaqueError]. The pointer must not be null, otherwise the function will panic.
     #[cfg_attr(debug_assertions, track_caller)]
     #[must_use]
-    pub(crate) unsafe fn from_opaque(opaque: *mut LLVMOpaqueError) -> Self {
+    pub(crate) unsafe fn new(opaque: *mut LLVMOpaqueError) -> Self {
         debug_assert!(!opaque.is_null(), "opaque: *mut LLVMOpaqueError cannot be null.");
         // cstr will always be non-null if opaque is non-null and comes from LLVM.
         let cstr = LLVMGetErrorMessage(opaque);
