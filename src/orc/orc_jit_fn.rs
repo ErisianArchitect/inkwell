@@ -1,7 +1,5 @@
 use std::marker::PhantomData;
 
-use crate::orc::OrcEngineRc;
-
 
 mod private {
     pub trait SealedUnsafeOrcJitFnPtr: Copy {}
@@ -11,17 +9,15 @@ pub trait UnsafeOrcJitFnPtr: private::SealedUnsafeOrcJitFnPtr {}
 
 #[derive(Debug, Clone)]
 pub struct OrcJitFunction<'ctx, F> {
-    engine: OrcEngineRc,
     inner: F,
-    _phantom: PhantomData<fn(&'ctx ())>,
+    _phantom: PhantomData<&'ctx ()>,
 }
 
 impl<'ctx, F> OrcJitFunction<'ctx, F> {
     #[must_use]
     #[inline]
-    pub(crate) const fn new(engine: OrcEngineRc, function: F) -> Self {
+    pub(crate) const fn new(function: F) -> Self {
         Self {
-            engine,
             inner: function,
             _phantom: PhantomData,
         }
