@@ -1,12 +1,11 @@
-use std::{ffi::{CStr, NulError}, rc::Rc};
+use std::ffi::NulError;
 
-use libc::strlen;
-use llvm_sys::error::{LLVMDisposeErrorMessage, LLVMGetErrorMessage, LLVMOpaqueError};
+use llvm_sys::error::LLVMOpaqueError;
 
-use crate::{error::LLVMErrorString, support::LLVMString};
+use crate::{error::LLVMErrorString, orc::mangled_symbol::MangledSymbol, support::LLVMString};
 
 /// Handles an [LLVMOpaqueError] that was issued from LLVM.
-pub(crate) fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLVMErrorString> {
+pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLVMErrorString> {
     if opaque.is_null() {
         Ok(())
     } else {
@@ -21,14 +20,28 @@ pub enum OrcError {
     CreateInstanceFailure,
     #[error("Failed to create eagerly compiled IR module: {0}")]
     AddEagerlyCompiledIRFailure(LLVMErrorString),
-    #[error("Failed to create lazily compiled IR module.")]
+    #[error("Failed to create lazily compiled IR module: {0}")]
     AddLazilyCompiledIRFailure(LLVMErrorString),
     #[error("Failed to add object file.")]
     AddObjectFileFailure(LLVMErrorString),
+    #[error("Failed to remove module.")]
+    RemoveModuleFailure(LLVMErrorString),
     #[error("Failed to lookup symbol address: {0}")]
     SymbolAddressLookupFailure(LLVMErrorString),
+    #[error("The given module name has already been used: {0:?}")]
+    RepeatModuleName(Box<str>),
     #[error("The module was already owned by an execution engine.")]
     ModuleOwnedByExecutionEngine,
+    #[error("The module was not found: {0:?}")]
+    ModuleNotFound(Box<str>),
+    #[error("A function by that mangled name has already been registered: {0:?}")]
+    MangledFunctionAlreadyRegistered(MangledSymbol),
+    #[error("A function by that name has already been registered: {0:?}")]
+    FunctionAlreadyRegistered(Box<str>),
+    #[error("Symbol was not found: {0:?}")]
+    SymbolNotFound(Box<str>),
+    #[error("Mangled Function was not found: {0:?}")]
+    MangledSymbolNotFound(MangledSymbol),
     #[error("LLVM Error: {0}")]
     LLVMError(#[from] LLVMErrorString),
     #[error("LLVM: {0}")]
