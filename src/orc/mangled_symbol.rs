@@ -16,6 +16,8 @@ pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) ->
 
 pub(crate) struct MangledSymbolInner {
     c_str: *mut c_char,
+    // len is a measure of the string length without the null terminator.
+    // add 1 to the len to get the full length with null terminator.
     len: usize,
 }
 
