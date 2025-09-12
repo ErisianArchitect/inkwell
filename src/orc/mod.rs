@@ -23,18 +23,15 @@ pub use error::OrcError;
 // use orc_module::OrcModule;
 
 use std::{
-    cell::{Cell, RefCell}, collections::HashMap, path::Path, rc::Rc
+    cell::{Cell, RefCell}, collections::HashMap, mem::transmute_copy, path::Path, rc::Rc
 };
 
 use llvm_sys::orc::{
-        LLVMOrcAddEagerlyCompiledIR, LLVMOrcAddLazilyCompiledIR, LLVMOrcAddObjectFile, LLVMOrcCreateInstance, LLVMOrcDisposeInstance, LLVMOrcGetSymbolAddress, LLVMOrcGetSymbolAddressIn, LLVMOrcJITStackRef, LLVMOrcModuleHandle, LLVMOrcRegisterJITEventListener, LLVMOrcRemoveModule, LLVMOrcUnregisterJITEventListener
+        LLVMOrcAddEagerlyCompiledIR, LLVMOrcAddLazilyCompiledIR, LLVMOrcAddObjectFile, LLVMOrcCreateIndirectStub, LLVMOrcCreateInstance, LLVMOrcDisposeInstance, LLVMOrcGetSymbolAddress, LLVMOrcGetSymbolAddressIn, LLVMOrcJITStackRef, LLVMOrcModuleHandle, LLVMOrcRegisterJITEventListener, LLVMOrcRemoveModule, LLVMOrcSetIndirectStubPointer, LLVMOrcTargetAddress, LLVMOrcUnregisterJITEventListener
     };
 
 use crate::{
-    error::LLVMErrorString,
-    memory_buffer::MemoryBuffer,
-    module::Module,
-    orc::{
+    error::LLVMErrorString, memory_buffer::MemoryBuffer, module::Module, orc::{
         mangled_symbol::{
             mangle_symbol,
             MangledSymbol
@@ -46,10 +43,9 @@ use crate::{
         symbol_table::{
             module_symbol_resolver,
             GlobalSymbolTable,
-            LocalSymbolTable
+            LocalSymbolTable, SymbolTable
         }
-    },
-    targets::TargetMachine,
+    }, support::to_c_str, targets::TargetMachine
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -236,7 +232,7 @@ impl OrcEngineInner {
         }
         let err = LLVMOrcDisposeInstance(self.jit_stack);
         if !err.is_null() {
-            return Err(LLVMErrorString::from_opaque(err));
+            return Err(LLVMErrorString::new(err));
         }
         Ok(())
     }
@@ -291,13 +287,18 @@ impl OrcEngine {
     }
     
     #[must_use]
+    pub fn create_symbol_table<'ctx>(&'ctx self) -> SymbolTable<'ctx> {
+        SymbolTable::new(self.inner.jit_stack)
+    }
+    
+    #[must_use]
     pub fn contains_mangled_symbol(&self, mangled_symbol: &MangledSymbol) -> Result<bool, OrcError> {
         let mut symbol_result = 0u64;
         let err = unsafe {
             LLVMOrcGetSymbolAddress(self.inner.jit_stack, &mut symbol_result, mangled_symbol.to_cstr().as_ptr())
         };
         if !err.is_null() {
-            return Err(OrcError::SymbolAddressLookupFailure(unsafe { LLVMErrorString::from_opaque(err) }));
+            return Err(OrcError::SymbolAddressLookupFailure(unsafe { LLVMErrorString::new(err) }));
         }
         if symbol_result == 0 {
             return Ok(false);
@@ -309,6 +310,40 @@ impl OrcEngine {
     pub fn contains_symbol(&self, name: &str) -> Result<bool, OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.contains_mangled_symbol(&mangled_symbol)
+    }
+    
+    pub fn create_mangled_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, mangled_symbol: MangledSymbol, function: F) -> Result<(), OrcError> {
+        let addr: usize = unsafe { transmute_copy(&function) };
+        let err = unsafe {
+            LLVMOrcCreateIndirectStub(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as LLVMOrcTargetAddress)
+        };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            return Err(OrcError::CreateIndirectStubFailure(err_string));
+        }
+        Ok(())
+    }
+    
+    pub fn create_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, name: &str, function: F) -> Result<(), OrcError> {
+        let mangled_symbol = self.mangle_symbol(name);
+        self.create_mangled_indirect_stub(mangled_symbol, function)
+    }
+    
+    pub fn set_mangled_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, mangled_symbol: &MangledSymbol, function: F) -> Result<(), OrcError> {
+        let addr: usize = unsafe { transmute_copy(&function) };
+        let err = unsafe {
+            LLVMOrcSetIndirectStubPointer(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as u64)
+        };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            return Err(OrcError::SetIndirectStubFailure(err_string));
+        }
+        Ok(())
+    }
+    
+    pub fn set_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, name: &str, function: F) -> Result<(), OrcError> {
+        let mangled_symbol = self.mangle_symbol(name);
+        self.set_mangled_indirect_stub(&mangled_symbol, function)
     }
     
     #[must_use]
@@ -332,10 +367,10 @@ impl OrcEngine {
     pub unsafe fn get_mangled_symbol_address(&self, mangled_symbol: &MangledSymbol) -> Result<usize, OrcError> {
         let mut symbol_result = 0u64;
         let err = unsafe {
-            LLVMOrcGetSymbolAddress(self.inner.jit_stack, &mut symbol_result, mangled_symbol.to_cstr().as_ptr())
+            LLVMOrcGetSymbolAddress(self.inner.jit_stack, &mut symbol_result, mangled_symbol.as_ptr())
         };
         if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::from_opaque(err) };
+            let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(OrcError::SymbolAddressLookupFailure(err_string));
         }
         if symbol_result == 0 {
@@ -365,7 +400,7 @@ impl OrcEngine {
             )
         };
         if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::from_opaque(err) };
+            let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(OrcError::SymbolAddressLookupFailure(err_string));
         }
         if symbol_result == 0 {
@@ -427,33 +462,22 @@ impl OrcEngine {
     /// functions.
     /// 
     /// The module name must be unique (no other module added to this engine by that name).
-    /// # Example
-    /// ```rust, no_run
-    /// let module = ...;
-    /// let target_data = ...;
-    /// 
-    /// let engine = OrcEngine::new(&target_data, None);
-    /// 
-    /// extern "C" fn extern_fn() {
-    ///     println!("extern_fn()");
-    /// }
-    /// 
-    /// let map = HashMap::from([
-    ///     (String::from("extern_fn"), extern_fn as u64),
-    /// ]);
-    /// 
-    /// if let Err(err) = engine.add_module("module_name", module, Compilation::Eager, Some(&map)) {
-    ///     eprintln!("Add Module Error: {err:?}");
-    /// }
-    /// ```
     #[must_use]
     pub fn add_module<'ctx>(
         &'ctx self,
         name: &str,
         module: Module<'_>,
         compilation_mode: CompilationMode,
-        local_symbol_table: Option<&HashMap<String, u64>>,
+        local_symbol_table: Option<SymbolTable<'_>>,
     ) -> Result<(), OrcError> {
+        let symbol_table = if let Some(symbol_table) = local_symbol_table {
+            if symbol_table.jit_stack != self.inner.jit_stack {
+                return Err(OrcError::NotOwnedByOrcEngine);
+            }
+            symbol_table.take_inner()
+        } else {
+            HashMap::new()
+        };
         if self.inner.modules.borrow().contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
@@ -465,8 +489,7 @@ impl OrcEngine {
         }
         let module = std::mem::ManuallyDrop::new(module);
         // Be free, data_layout!
-        module.data_layout.borrow_mut().take();
-        let local_table = LocalSymbolTable::new(self.inner.symbol_table.clone(), local_symbol_table);
+        let local_table = LocalSymbolTable::new_with(self.inner.symbol_table.clone(), symbol_table);
         let add_compiled_ir_fn = match compilation_mode {
             CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
             CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
@@ -477,12 +500,13 @@ impl OrcEngine {
             &mut handle,
             module.as_mut_ptr(),
             Some(module_symbol_resolver),
-            // This gets a pointer to the LocalSymbolTableInner within the Rc in the LocalSymbolTable.
-            // this is used as the context for the module_symbol_resolver.
+            // // This gets a pointer to the LocalSymbolTableInner within the Rc in the LocalSymbolTable.
+            // // this is used as the context for the module_symbol_resolver.
             local_table.as_ptr().cast(),
         ) };
+        module.data_layout.borrow_mut().take();
         if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::from_opaque(err) };
+            let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(match compilation_mode {
                 CompilationMode::Eager => OrcError::AddEagerlyCompiledIRFailure(err_string),
                 CompilationMode::Lazy => OrcError::AddLazilyCompiledIRFailure(err_string),
@@ -497,12 +521,20 @@ impl OrcEngine {
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
-        local_symbol_table: Option<&HashMap<String, u64>>,
+        local_symbol_table: Option<SymbolTable>,
     ) -> Result<(), OrcError> {
+        let symbol_table = if let Some(symbol_table) = local_symbol_table {
+            if symbol_table.jit_stack != self.inner.jit_stack {
+                return Err(OrcError::NotOwnedByOrcEngine);
+            }
+            symbol_table.take_inner()
+        } else {
+            HashMap::new()
+        };
         if self.inner.modules.borrow().contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
-        let local_table = LocalSymbolTable::new(self.inner.symbol_table.clone(), local_symbol_table);
+        let local_table = LocalSymbolTable::new_with(self.inner.symbol_table.clone(), symbol_table);
         let mut handle = 0u64;
         let err = unsafe { LLVMOrcAddObjectFile(
             self.inner.jit_stack,
@@ -512,7 +544,7 @@ impl OrcEngine {
             local_table.as_ptr().cast(),
         ) };
         if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::from_opaque(err) };
+            let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(OrcError::AddObjectFileFailure(err_string))
         }
         self.inner.modules.borrow_mut().insert(name.into(), OrcModule::new(handle, local_table));
@@ -524,7 +556,7 @@ impl OrcEngine {
         &self,
         name: &str,
         object_file_path: P,
-        local_symbol_table: Option<&HashMap<String, u64>>,
+        local_symbol_table: Option<SymbolTable>,
     ) -> Result<(), OrcError> {
         // this is going to be repeated in `add_object_from_memory`, but it is preferable to do this check before
         // creating the memory buffer. It won't matter that it's done a second time.
@@ -542,7 +574,7 @@ impl OrcEngine {
         if let Some(module) = self.inner.modules.borrow_mut().remove(name) {
             let err = unsafe { LLVMOrcRemoveModule(self.inner.jit_stack, module.handle) };
             if !err.is_null() {
-                let err_string = unsafe { LLVMErrorString::from_opaque(err) };
+                let err_string = unsafe { LLVMErrorString::new(err) };
                 return Err(OrcError::RemoveModuleFailure(err_string));
             }
             Ok(())
