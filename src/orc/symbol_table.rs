@@ -1,9 +1,9 @@
-use std::{cell::{BorrowError, RefCell}, collections::HashMap, ffi::CString, marker::PhantomData, os::raw::c_void, pin::Pin, ptr, rc::{Rc, Weak as WeakRc}};
+use std::{cell::{BorrowError, RefCell}, collections::HashMap, ffi::CString, marker::PhantomData, mem::transmute_copy, os::raw::c_void, pin::Pin, ptr, rc::{Rc, Weak as WeakRc}};
 
 use libc::c_char;
 use llvm_sys::orc::{LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
-use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, OrcEngine, OrcEngineInner}, support::to_c_str};
+use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcJitFnPtr, OrcEngine, OrcEngineInner}, support::to_c_str};
 
 // TODO (ErisianArchitect): Create IntoSymbolTable trait and implement for some types.
 //                          IntoSymbolTable should be used to create a HashMap<MangledSymbol, u64>.
@@ -150,15 +150,11 @@ pub(crate) struct LocalSymbolTable<'ctx> {
 // TODOC (ErisianArchitect): impl LocalSymbolTable
 impl<'ctx> LocalSymbolTable<'ctx> {
     #[must_use]
-    pub(crate) fn new(global_table: GlobalSymbolTable<'ctx>, local_table: Option<&HashMap<String, u64>>) -> Self {
-        let jit_stack = unsafe { global_table.jit_stack() };
+    pub(crate) fn new(global_table: GlobalSymbolTable<'ctx>, local_table: Option<SymbolTable>) -> Self {
         Self::new_with(
             global_table,
             local_table.map(move |table| {
-                table.iter().map(move |(name, &addr)| (
-                    unsafe { mangle_symbol(jit_stack, name) },
-                    addr,
-                )).collect()
+                table.take_inner()
             }).unwrap_or_else(HashMap::new),
         )
     }
@@ -181,12 +177,57 @@ impl<'ctx> LocalSymbolTable<'ctx> {
     }
 }
 
+// TODOC (ErisianArchitect): struct SymbolTable
 #[derive(Debug)]
 pub struct SymbolTable<'ctx> {
     // It's safe for SymbolTable to have the JITStackRef because it is tied to the lifetime of the OrcEngine.
-    jit_stack: LLVMOrcJITStackRef,
-    symbols: HashMap<MangledSymbol, u64>,
+    pub(crate) jit_stack: LLVMOrcJITStackRef,
+    pub(crate) symbols: HashMap<MangledSymbol, u64>,
     _lifetime: PhantomData<&'ctx ()>,
+}
+
+// TODOC (ErisianArchitect): impl SymbolTable
+impl<'ctx> SymbolTable<'ctx> {
+    #[must_use]
+    #[inline]
+    pub(crate) fn new(jit_stack: LLVMOrcJITStackRef) -> Self {
+        Self {
+            jit_stack,
+            symbols: HashMap::new(),
+            _lifetime: PhantomData,
+        }
+    }
+    
+    #[inline]
+    pub fn register_mangled<F: UnsafeOrcJitFnPtr>(&mut self, mangled_symbol: MangledSymbol, function: F) -> Option<u64> {
+        let addr: usize = unsafe { transmute_copy(&function) };
+        self.symbols.insert(mangled_symbol, addr as u64)
+    }
+    
+    #[inline]
+    pub fn register<F: UnsafeOrcJitFnPtr>(&mut self, name: &str, function: F) -> Option<u64> {
+        let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
+        self.register_mangled(mangled_symbol, function)
+    }
+    
+    #[must_use]
+    #[inline]
+    pub fn contains_mangled(&self, mangled_symbol: &MangledSymbol) -> bool {
+        self.symbols.contains_key(mangled_symbol)
+    }
+    
+    #[must_use]
+    #[inline]
+    pub fn contains(&self, name: &str) -> bool {
+        let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
+        self.contains_mangled(&mangled_symbol)
+    }
+    
+    #[must_use]
+    #[inline]
+    pub(crate) fn take_inner(self) -> HashMap<MangledSymbol, u64> {
+        self.symbols
+    }
 }
 
 // pub type LLVMOrcSymbolResolverFn = Option<extern "C" fn(_: *const c_char, _: *mut c_void) -> u64>;
