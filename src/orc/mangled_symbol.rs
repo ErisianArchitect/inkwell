@@ -61,6 +61,12 @@ impl MangledSymbol {
         let bytes = unsafe { std::slice::from_raw_parts(self.symbol.c_str as *mut u8, len) };
         unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
     }
+    
+    #[must_use]
+    #[inline]
+    pub fn as_ptr(&self) -> *const c_char {
+        self.symbol.c_str
+    }
 }
 
 impl std::borrow::Borrow<str> for MangledSymbol {
