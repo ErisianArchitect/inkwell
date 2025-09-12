@@ -32,6 +32,7 @@ pub mod error;
 pub mod execution_engine;
 #[cfg(not(feature = "llvm8-0"))]
 pub mod intrinsics;
+pub mod listener;
 pub mod memory_buffer;
 pub mod memory_manager;
 #[deny(missing_docs)]
