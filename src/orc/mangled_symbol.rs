@@ -2,7 +2,7 @@ use std::{ffi::{CStr, CString}, rc::Rc};
 use libc::{c_char, strlen};
 use llvm_sys::orc::{LLVMOrcDisposeMangledSymbol, LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
-// TODO (ErisianArchitect): get_mangled_symbol
+// TODOC (ErisianArchitect): mangle_symbol()
 pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) -> MangledSymbol {
     let name_c_str = crate::support::to_c_str(name);
     let name_ptr = match name_c_str {
@@ -14,16 +14,15 @@ pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) ->
     MangledSymbol::from_mangled_cstr(symbol)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ManagedSymbolInner {
+pub(crate) struct MangledSymbolInner {
     c_str: *mut c_char,
     len: usize,
 }
 
 // TODOC (ErisianArchitect): struct MangledSymbol
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MangledSymbol {
-    symbol: Rc<ManagedSymbolInner>,
+    symbol: Rc<MangledSymbolInner>,
 }
 
 // TODOC (ErisianArchitect): impl MangledSymbol
@@ -36,7 +35,7 @@ impl MangledSymbol {
         // a valid UTF-8 C string.
         let len = strlen(mangled_cstr);
         Self {
-            symbol: Rc::new(ManagedSymbolInner { c_str: mangled_cstr, len }),
+            symbol: Rc::new(MangledSymbolInner { c_str: mangled_cstr, len }),
         }
     }
     
@@ -150,10 +149,20 @@ impl std::hash::Hash for MangledSymbol {
     }
 }
 
-impl Drop for MangledSymbol {
+impl std::fmt::Display for MangledSymbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl std::fmt::Debug for MangledSymbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.to_str())
+    }
+}
+
+impl Drop for MangledSymbolInner {
     fn drop(&mut self) {
-        if Rc::strong_count(&self.symbol) == 1 {
-            unsafe { LLVMOrcDisposeMangledSymbol(self.symbol.c_str) };
-        }
+        unsafe { LLVMOrcDisposeMangledSymbol(self.c_str) };
     }
 }
