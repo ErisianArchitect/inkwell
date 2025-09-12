@@ -1,16 +1,14 @@
-use std::{ffi::{CStr, CString}, rc::Rc};
+use std::{borrow::Cow, ffi::{CStr, CString}, rc::Rc};
 use libc::{c_char, strlen};
 use llvm_sys::orc::{LLVMOrcDisposeMangledSymbol, LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
+use crate::support::to_c_str;
+
 // TODOC (ErisianArchitect): mangle_symbol()
 pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) -> MangledSymbol {
-    let name_c_str = crate::support::to_c_str(name);
-    let name_ptr = match name_c_str {
-        std::borrow::Cow::Borrowed(inner) => inner.as_ptr(),
-        std::borrow::Cow::Owned(inner) => inner.as_ptr(),
-    };
+    let name_c_str = to_c_str(name);
     let mut symbol: *mut i8 = std::ptr::null_mut();
-    LLVMOrcGetMangledSymbol(jit_stack, &mut symbol, name_ptr);
+    LLVMOrcGetMangledSymbol(jit_stack, &mut symbol, name_c_str.as_ptr());
     MangledSymbol::from_mangled_cstr(symbol)
 }
 
