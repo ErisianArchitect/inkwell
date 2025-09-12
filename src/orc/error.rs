@@ -9,7 +9,7 @@ pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLV
     if opaque.is_null() {
         Ok(())
     } else {
-        Err(unsafe { LLVMErrorString::from_opaque(opaque) })
+        Err(unsafe { LLVMErrorString::new(opaque) })
     }
 }
 
@@ -18,6 +18,8 @@ pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLV
 pub enum OrcError {
     #[error("Failed to create Orc JIT engine.")]
     CreateInstanceFailure,
+    #[error("Failed to create indirect stub: {0}")]
+    CreateIndirectStubFailure(LLVMErrorString),
     #[error("Failed to create eagerly compiled IR module: {0}")]
     AddEagerlyCompiledIRFailure(LLVMErrorString),
     #[error("Failed to create lazily compiled IR module: {0}")]
@@ -40,6 +42,10 @@ pub enum OrcError {
     FunctionAlreadyRegistered(Box<str>),
     #[error("Symbol was not found: {0:?}")]
     SymbolNotFound(Box<str>),
+    #[error("Failed to set indirect stub: {0}")]
+    SetIndirectStubFailure(LLVMErrorString),
+    #[error("Symbol Table not owned by Orc Engine.")]
+    NotOwnedByOrcEngine,
     #[error("Mangled Function was not found: {0:?}")]
     MangledSymbolNotFound(MangledSymbol),
     #[error("LLVM Error: {0}")]
