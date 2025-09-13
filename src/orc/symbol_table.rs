@@ -149,18 +149,9 @@ pub(crate) struct LocalSymbolTable<'ctx> {
 
 // TODOC (ErisianArchitect): impl LocalSymbolTable
 impl<'ctx> LocalSymbolTable<'ctx> {
-    #[must_use]
-    pub(crate) fn new(global_table: GlobalSymbolTable<'ctx>, local_table: Option<SymbolTable>) -> Self {
-        Self::new_with(
-            global_table,
-            local_table.map(move |table| {
-                table.take_inner()
-            }).unwrap_or_else(HashMap::new),
-        )
-    }
     
     #[must_use]
-    pub(crate) fn new_with(global_table: GlobalSymbolTable<'ctx>, local_table: HashMap<MangledSymbol, u64>) -> Self {
+    pub(crate) fn new(global_table: GlobalSymbolTable<'ctx>, local_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
             inner: Rc::new(RefCell::new(LocalSymbolTableInner {
                 global_table,
