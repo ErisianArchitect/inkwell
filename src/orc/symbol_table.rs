@@ -3,7 +3,7 @@ use std::{cell::{BorrowError, RefCell}, collections::HashMap, ffi::CString, mark
 use libc::c_char;
 use llvm_sys::orc::{LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
-use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcJitFnPtr, OrcEngine, OrcEngineInner}, support::to_c_str};
+use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcFn, OrcEngine, OrcEngineInner}, support::to_c_str};
 
 // TODO (ErisianArchitect): Create IntoSymbolTable trait and implement for some types.
 //                          IntoSymbolTable should be used to create a HashMap<MangledSymbol, u64>.
@@ -190,13 +190,13 @@ impl<'ctx> SymbolTable<'ctx> {
     }
     
     #[inline]
-    pub fn register_mangled<F: UnsafeOrcJitFnPtr>(&mut self, mangled_symbol: MangledSymbol, function: F) -> Option<u64> {
+    pub fn register_mangled<F: UnsafeOrcFn>(&mut self, mangled_symbol: MangledSymbol, function: F) -> Option<u64> {
         let addr: usize = unsafe { transmute_copy(&function) };
         self.symbols.insert(mangled_symbol, addr as u64)
     }
     
     #[inline]
-    pub fn register<F: UnsafeOrcJitFnPtr>(&mut self, name: &str, function: F) -> Option<u64> {
+    pub fn register<F: UnsafeOrcFn>(&mut self, name: &str, function: F) -> Option<u64> {
         let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
         self.register_mangled(mangled_symbol, function)
     }
