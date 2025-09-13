@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ffi::{CStr, CString}, rc::Rc};
+use std::{ffi::{CStr, CString}, rc::Rc};
 use libc::{c_char, strlen};
 use llvm_sys::orc::{LLVMOrcDisposeMangledSymbol, LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
