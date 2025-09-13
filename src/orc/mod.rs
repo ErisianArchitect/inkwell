@@ -55,8 +55,8 @@ use crate::{
             MangledSymbol
         },
         orc_jit_fn::{
-            OrcJitFunction,
-            UnsafeOrcJitFnPtr
+            OrcFunction,
+            UnsafeOrcFn
         },
         symbol_table::{
             module_symbol_resolver,
@@ -66,6 +66,38 @@ use crate::{
     },
     targets::TargetMachine,
 };
+
+// TODOC (ErisianArchitect): struct TargetAddress
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TargetAddress {
+    pub(crate) address: LLVMOrcTargetAddress
+}
+
+// TODOC (ErisianArchitect): impl TargetAddress
+impl TargetAddress {
+    #[must_use]
+    #[inline]
+    pub fn new<F: UnsafeOrcFn>(function: F) -> Self {
+        let address: usize = unsafe { transmute_copy(&function) };
+        unsafe { Self::new_raw(address as LLVMOrcTargetAddress) }
+    }
+    
+    /// Unsafe fallback for functions that cannot be represented with `UnsafeOrcJitFnPtr`.
+    #[must_use]
+    #[inline]
+    pub unsafe fn new_raw(address: LLVMOrcTargetAddress) -> Self {
+        Self {
+            address
+        }
+    }
+    
+    #[must_use]
+    #[inline]
+    pub fn get_address(self) -> LLVMOrcTargetAddress {
+        self.address
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompilationMode {
@@ -354,7 +386,7 @@ impl OrcEngine {
         self.contains_mangled_symbol(&mangled_symbol)
     }
     
-    pub fn create_mangled_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, mangled_symbol: MangledSymbol, function: F) -> Result<(), OrcError> {
+    pub fn create_mangled_indirect_stub<F: UnsafeOrcFn>(&self, mangled_symbol: MangledSymbol, function: F) -> Result<(), OrcError> {
         let addr: usize = unsafe { transmute_copy(&function) };
         let err = unsafe {
             LLVMOrcCreateIndirectStub(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as LLVMOrcTargetAddress)
@@ -366,12 +398,12 @@ impl OrcEngine {
         Ok(())
     }
     
-    pub fn create_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, name: &str, function: F) -> Result<(), OrcError> {
+    pub fn create_indirect_stub<F: UnsafeOrcFn>(&self, name: &str, function: F) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.create_mangled_indirect_stub(mangled_symbol, function)
     }
     
-    pub fn set_mangled_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, mangled_symbol: &MangledSymbol, function: F) -> Result<(), OrcError> {
+    pub fn set_mangled_indirect_stub<F: UnsafeOrcFn>(&self, mangled_symbol: &MangledSymbol, function: F) -> Result<(), OrcError> {
         let addr: usize = unsafe { transmute_copy(&function) };
         let err = unsafe {
             LLVMOrcSetIndirectStubPointer(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as LLVMOrcTargetAddress)
@@ -383,13 +415,13 @@ impl OrcEngine {
         Ok(())
     }
     
-    pub fn set_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, name: &str, function: F) -> Result<(), OrcError> {
+    pub fn set_indirect_stub<F: UnsafeOrcFn>(&self, name: &str, function: F) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.set_mangled_indirect_stub(&mangled_symbol, function)
     }
     
     #[must_use]
-    pub fn register_mangled_function<F: UnsafeOrcJitFnPtr>(&self, mangled_symbol: MangledSymbol, f: F) -> Result<(), OrcError> {
+    pub fn register_mangled_function<F: UnsafeOrcFn>(&self, mangled_symbol: MangledSymbol, f: F) -> Result<(), OrcError> {
         let address: usize = unsafe { std::mem::transmute_copy(&f) };
         if let Some(found_addr) = self.inner.symbol_table.insert_mangled(mangled_symbol.clone(), address as u64) {
             // insert back into the table
@@ -400,7 +432,7 @@ impl OrcEngine {
     }
     
     #[must_use]
-    pub fn register_function<F: UnsafeOrcJitFnPtr>(&self, name: &str, f: F) -> Result<(), OrcError> {
+    pub fn register_function<F: UnsafeOrcFn>(&self, name: &str, f: F) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.register_mangled_function(mangled_symbol, f)
     }
@@ -458,39 +490,39 @@ impl OrcEngine {
     }
     
     #[must_use]
-    pub unsafe fn get_mangled_function<'ctx, F: UnsafeOrcJitFnPtr>(
+    pub unsafe fn get_mangled_function<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         mangled_symbol: &MangledSymbol
-    ) -> Result<OrcJitFunction<'ctx, F>, OrcError> {
+    ) -> Result<OrcFunction<'ctx, F>, OrcError> {
         let addr = self.get_mangled_symbol_address(mangled_symbol)?;
-        Ok(OrcJitFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
+        Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
     }
     
     #[must_use]
-    pub unsafe fn get_function<'ctx, F: UnsafeOrcJitFnPtr>(
+    pub unsafe fn get_function<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         name: &str,
-    ) -> Result<OrcJitFunction<'ctx, F>, OrcError> {
+    ) -> Result<OrcFunction<'ctx, F>, OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.get_mangled_function(&mangled_symbol)
     }
     
     #[must_use]
-    pub unsafe fn get_mangled_function_in<'ctx, F: UnsafeOrcJitFnPtr>(
+    pub unsafe fn get_mangled_function_in<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         module: &str,
         mangled_symbol: &MangledSymbol,
-    ) -> Result<OrcJitFunction<'ctx, F>, OrcError> {
+    ) -> Result<OrcFunction<'ctx, F>, OrcError> {
         let addr = self.get_mangled_symbol_address_in(module, mangled_symbol)?;
-        Ok(OrcJitFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
+        Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
     }
     
     #[must_use]
-    pub unsafe fn get_function_in<'ctx, F: UnsafeOrcJitFnPtr>(
+    pub unsafe fn get_function_in<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         module: &str,
         symbol: &str,
-    ) -> Result<OrcJitFunction<'ctx, F>, OrcError> {
+    ) -> Result<OrcFunction<'ctx, F>, OrcError> {
         let mangled_symbol = self.mangle_symbol(symbol);
         self.get_mangled_function_in(module, &mangled_symbol)
     }
