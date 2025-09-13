@@ -13,6 +13,7 @@ TODO (ErisianArchitect):
 I'm not sure how to test crate::listeners since some of the functionality is platform dependent.
 */
 
+pub mod compile_callback;
 pub mod error;
 pub mod mangled_symbol;
 pub mod orc_jit_fn;
@@ -27,11 +28,28 @@ use std::{
 };
 
 use llvm_sys::orc::{
-        LLVMOrcAddEagerlyCompiledIR, LLVMOrcAddLazilyCompiledIR, LLVMOrcAddObjectFile, LLVMOrcCreateIndirectStub, LLVMOrcCreateInstance, LLVMOrcDisposeInstance, LLVMOrcGetSymbolAddress, LLVMOrcGetSymbolAddressIn, LLVMOrcJITStackRef, LLVMOrcModuleHandle, LLVMOrcRegisterJITEventListener, LLVMOrcRemoveModule, LLVMOrcSetIndirectStubPointer, LLVMOrcTargetAddress, LLVMOrcUnregisterJITEventListener
-    };
+    LLVMOrcAddEagerlyCompiledIR,
+    LLVMOrcAddLazilyCompiledIR,
+    LLVMOrcAddObjectFile,
+    LLVMOrcCreateIndirectStub,
+    LLVMOrcCreateInstance,
+    LLVMOrcDisposeInstance,
+    LLVMOrcGetSymbolAddress,
+    LLVMOrcGetSymbolAddressIn,
+    LLVMOrcRegisterJITEventListener,
+    LLVMOrcRemoveModule,
+    LLVMOrcSetIndirectStubPointer,
+    LLVMOrcUnregisterJITEventListener,
+    LLVMOrcJITStackRef,
+    LLVMOrcModuleHandle,
+    LLVMOrcTargetAddress,
+};
 
 use crate::{
-    error::LLVMErrorString, memory_buffer::MemoryBuffer, module::Module, orc::{
+    error::LLVMErrorString,
+    memory_buffer::MemoryBuffer,
+    module::Module,
+    orc::{
         mangled_symbol::{
             mangle_symbol,
             MangledSymbol
@@ -45,8 +63,21 @@ use crate::{
             GlobalSymbolTable,
             LocalSymbolTable, SymbolTable
         }
-    }, support::to_c_str, targets::TargetMachine
+    },
+    targets::TargetMachine,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompilationMode {
+    // Eager compilation is broken for Windows, I believe, so perhaps this should be removed on Windows?
+    // https://stackoverflow.com/questions/49866755/rust-llvm-orc-jit-cannot-find-symbol-address
+    /// Compile immediately.
+    /// # Warning!
+    /// ***This does not work on Windows.***
+    Eager,
+    /// Compile on demand. Functions will not be compiled until their first resolution.
+    Lazy,
+}
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct OrcEngineFlags(Cell<u16>);
@@ -98,7 +129,13 @@ impl OrcEngineFlags {
 macro_rules! orc_engine_event_listener_flags_impl {
     (
         $(#[$attr:meta])*
-        $flag_const_name:ident = $flag_value:expr, $set_name:ident, $has_name:ident, $listener_name:ident, $add_listener_name:ident, $remove_listener_name:ident, $has_listener_name:ident
+        $flag_const_name:ident = $flag_value:expr,
+        $set_name:ident,
+        $has_name:ident,
+        $listener_name:ident,
+        $add_listener_name:ident,
+        $remove_listener_name:ident,
+        $has_listener_name:ident
     ) => {
         impl OrcEngineFlags {
             $(#[$attr])*
@@ -144,10 +181,24 @@ macro_rules! orc_engine_event_listener_flags_impl {
     };
     ($(
         $(#[$attr:meta])*
-        $flag_const_name:ident = $flag_value:expr, $set_name:ident, $has_name:ident, $listener_name:ident, $add_listener_name:ident, $remove_listener_name:ident, $has_listener_name:ident;
+        $flag_const_name:ident = $flag_value:expr,
+        $set_name:ident, $has_name:ident,
+        $listener_name:ident,
+        $add_listener_name:ident,
+        $remove_listener_name:ident,
+        $has_listener_name:ident;
     )+) => {
         $(
-            orc_engine_event_listener_flags_impl!{ $(#[$attr])* $flag_const_name = $flag_value, $set_name, $has_name, $listener_name, $add_listener_name, $remove_listener_name, $has_listener_name}
+            orc_engine_event_listener_flags_impl!{
+                $(#[$attr])*
+                $flag_const_name = $flag_value,
+                $set_name,
+                $has_name,
+                $listener_name,
+                $add_listener_name,
+                $remove_listener_name,
+                $has_listener_name
+            }
         )*
     };
 }
@@ -161,6 +212,7 @@ orc_engine_event_listener_flags_impl!(
     add_gdb_registration_listener,
     remove_gdb_registration_listener,
     has_gdb_registration_listener;
+    
     // TODO (ErisianArchitect): Add vtune feature flag, and conditionally compile for vtune.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     INTEL_LISTENER_REGISTERED       = 1 << 1,
@@ -170,6 +222,7 @@ orc_engine_event_listener_flags_impl!(
     add_intel_event_listener,
     remove_intel_event_listener,
     has_intel_event_listener;
+    
     #[cfg(target_os = "linux")]
     OPROFILE_LISTENER_REGISTERED    = 1 << 2,
     set_oprofile,
@@ -178,6 +231,7 @@ orc_engine_event_listener_flags_impl!(
     add_oprofile_event_listener,
     remove_oprofile_event_listener,
     has_oprofile_event_listener;
+    
     #[cfg(target_os = "linux")]
     PERF_LISTENER_REGISTERED        = 1 << 3,
     set_perf,
@@ -214,35 +268,23 @@ impl OrcModule {
 
 #[derive(Debug)]
 pub(crate) struct OrcEngineInner {
-    jit_stack: LLVMOrcJITStackRef,
-    symbol_table: GlobalSymbolTable<'static>,
-    modules: RefCell<HashMap<Box<str>, OrcModule>>,
+    pub(crate) jit_stack: LLVMOrcJITStackRef,
+    pub(crate) symbol_table: GlobalSymbolTable<'static>,
+    pub(crate) modules: RefCell<HashMap<Box<str>, OrcModule>>,
     /// 0: GDB_LISTENER registered
     /// 1: Intel Listener registered
     /// 2: OProfile Listener registered
     /// 3: Perf Listener registered
-    flags: OrcEngineFlags,
-}
-
-impl OrcEngineInner {
-    // TODOC (ErisianArchitect): OrcEngineRc dispose
-    unsafe fn dispose(&self) -> Result<(), LLVMErrorString> {
-        if self.jit_stack.is_null() {
-            return Ok(());
-        }
-        let err = LLVMOrcDisposeInstance(self.jit_stack);
-        if !err.is_null() {
-            return Err(LLVMErrorString::new(err));
-        }
-        Ok(())
-    }
+    pub(crate) flags: OrcEngineFlags,
 }
 
 impl Drop for OrcEngineInner {
     fn drop(&mut self) {
-        match unsafe { self.dispose() } {
-            Ok(()) => (),
-            Err(err) => panic!("Failed to dispose of LLVMOrcJitStack: {err}"),
+        debug_assert!(!self.jit_stack.is_null(), "jit_stack was null on drop.");
+        let err = unsafe { LLVMOrcDisposeInstance(self.jit_stack) };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            panic!("LLVM Error on OrcEngine drop: {err_string}");
         }
     }
 }
@@ -254,16 +296,10 @@ pub struct OrcEngine {
     inner: Rc<OrcEngineInner>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CompilationMode {
-    Eager,
-    Lazy,
-}
-
 // TODOC (ErisianArchitect): impl OrcEngine
 impl OrcEngine {
     #[must_use]
-    pub fn new(target_machine: &TargetMachine, symbol_table: Option<&HashMap<String, u64>>) -> Result<Self, OrcError> {
+    pub fn new(target_machine: &TargetMachine) -> Result<Self, OrcError> {
         let jit_stack = unsafe { LLVMOrcCreateInstance(target_machine.as_mut_ptr()) };
         if jit_stack.is_null() {
             return Err(OrcError::CreateInstanceFailure);
@@ -271,11 +307,17 @@ impl OrcEngine {
         Ok(Self {
             inner: Rc::new(OrcEngineInner {
                 jit_stack,
-                symbol_table: unsafe { std::mem::transmute(GlobalSymbolTable::new(jit_stack, symbol_table)) },
+                symbol_table: unsafe { std::mem::transmute(GlobalSymbolTable::new(jit_stack, None)) },
                 modules: RefCell::new(HashMap::new()),
                 flags: OrcEngineFlags::new(),
             })
         })
+    }
+    
+    #[must_use]
+    #[inline]
+    pub fn jit_stack_ref(&self) -> LLVMOrcJITStackRef {
+        self.inner.jit_stack
     }
     
     // Unfortunately there is no demangle function, so this is an irreversible operation.
@@ -332,7 +374,7 @@ impl OrcEngine {
     pub fn set_mangled_indirect_stub<F: UnsafeOrcJitFnPtr>(&self, mangled_symbol: &MangledSymbol, function: F) -> Result<(), OrcError> {
         let addr: usize = unsafe { transmute_copy(&function) };
         let err = unsafe {
-            LLVMOrcSetIndirectStubPointer(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as u64)
+            LLVMOrcSetIndirectStubPointer(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as LLVMOrcTargetAddress)
         };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
@@ -489,7 +531,7 @@ impl OrcEngine {
         }
         let module = std::mem::ManuallyDrop::new(module);
         // Be free, data_layout!
-        let local_table = LocalSymbolTable::new_with(self.inner.symbol_table.clone(), symbol_table);
+        let local_table = LocalSymbolTable::new(self.inner.symbol_table.clone(), symbol_table);
         let add_compiled_ir_fn = match compilation_mode {
             CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
             CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
@@ -534,7 +576,7 @@ impl OrcEngine {
         if self.inner.modules.borrow().contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
-        let local_table = LocalSymbolTable::new_with(self.inner.symbol_table.clone(), symbol_table);
+        let local_table = LocalSymbolTable::new(self.inner.symbol_table.clone(), symbol_table);
         let mut handle = 0u64;
         let err = unsafe { LLVMOrcAddObjectFile(
             self.inner.jit_stack,
@@ -587,6 +629,4 @@ impl OrcEngine {
     pub fn has_module(&self, name: &str) -> bool {
         self.inner.modules.borrow().contains_key(name)
     }
-    
-    // TODO (ErisianArchitect): create_indirect_stub, set_indirect_stub
 }
