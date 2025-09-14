@@ -24,7 +24,7 @@ pub use error::OrcError;
 // use orc_module::OrcModule;
 
 use std::{
-    cell::{Cell, RefCell}, collections::HashMap, mem::transmute_copy, path::Path, rc::Rc
+    cell::{Cell, RefCell}, collections::HashMap, mem::{transmute, transmute_copy}, path::Path, rc::Rc
 };
 
 use llvm_sys::orc::{
@@ -67,24 +67,24 @@ use crate::{
     targets::TargetMachine,
 };
 
-// TODOC (ErisianArchitect): struct TargetAddress
+// TODOC (ErisianArchitect): struct FunctionAddress
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TargetAddress {
+pub struct FunctionAddress {
     pub(crate) address: LLVMOrcTargetAddress
 }
 
-// TODOC (ErisianArchitect): impl TargetAddress
-impl TargetAddress {
+// TODOC (ErisianArchitect): impl FunctionAddress
+impl FunctionAddress {
     pub const NULL: Self = Self::null();
     #[must_use]
     #[inline]
     pub fn new<F: UnsafeOrcFn>(function: F) -> Self {
-        let address: usize = unsafe { transmute_copy(&function) };
+        let address: usize = unsafe { transmute(&function) };
         unsafe { Self::new_raw(address as LLVMOrcTargetAddress) }
     }
     
-    /// Unsafe fallback for functions that cannot be represented with `UnsafeOrcJitFnPtr`.
+    /// Unsafe fallback for functions that cannot be represented with `UnsafeOrcFn`.
     #[must_use]
     #[inline]
     pub const unsafe fn new_raw(address: LLVMOrcTargetAddress) -> Self {
@@ -101,7 +101,7 @@ impl TargetAddress {
     
     #[must_use]
     #[inline]
-    pub fn get_address(self) -> LLVMOrcTargetAddress {
+    pub fn address(self) -> LLVMOrcTargetAddress {
         self.address
     }
 }
