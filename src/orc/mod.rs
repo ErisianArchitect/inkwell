@@ -76,6 +76,7 @@ pub struct TargetAddress {
 
 // TODOC (ErisianArchitect): impl TargetAddress
 impl TargetAddress {
+    pub const NULL: Self = Self::null();
     #[must_use]
     #[inline]
     pub fn new<F: UnsafeOrcFn>(function: F) -> Self {
@@ -86,10 +87,16 @@ impl TargetAddress {
     /// Unsafe fallback for functions that cannot be represented with `UnsafeOrcJitFnPtr`.
     #[must_use]
     #[inline]
-    pub unsafe fn new_raw(address: LLVMOrcTargetAddress) -> Self {
+    pub const unsafe fn new_raw(address: LLVMOrcTargetAddress) -> Self {
         Self {
             address
         }
+    }
+    
+    #[must_use]
+    #[inline]
+    pub const fn null() -> Self {
+        Self { address: 0 }
     }
     
     #[must_use]
