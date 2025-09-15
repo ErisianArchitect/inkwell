@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 
-
 mod private {
     pub trait SealedUnsafeOrcJitFnPtr: Copy {}
 }
