@@ -307,11 +307,13 @@ impl OrcEngine {
     // There should be a way to demangle it, but that would be up to the user of the api.
     /// Mangles name so that it can be used directly for lookups or insertions inside of this [OrcEngine].
     #[must_use]
+    #[inline]
     pub fn mangle_symbol(&self, name: &str) -> MangledSymbol {
         unsafe { mangle_symbol(self.inner.jit_stack, name) }
     }
     
     #[must_use]
+    #[inline]
     pub fn create_symbol_table<'ctx>(&'ctx self) -> SymbolTable<'ctx> {
         SymbolTable::new(self.inner.jit_stack)
     }
@@ -332,6 +334,7 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub fn contains_symbol(&self, name: &str) -> Result<bool, OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.contains_mangled_symbol(&mangled_symbol)
@@ -351,6 +354,7 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub fn create_indirect_stub<F: UnsafeOrcFn>(&self, name: &str, function: F) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.create_mangled_indirect_stub(mangled_symbol, function)
@@ -423,6 +427,7 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub unsafe fn get_symbol_address(&self, name: &str) -> Result<usize, OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
         self.get_mangled_symbol_address(&mangled_symbol)
@@ -453,12 +458,14 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub unsafe fn get_symbol_address_in(&self, module: &str, symbol: &str) -> Result<usize, OrcError> {
         let mangled_symbol = self.mangle_symbol(symbol);
         self.get_mangled_symbol_address_in(module, &mangled_symbol)
     }
     
     #[must_use]
+    #[inline]
     pub unsafe fn get_mangled_function<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         mangled_symbol: &MangledSymbol
@@ -468,6 +475,7 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub unsafe fn get_function<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         name: &str,
@@ -477,6 +485,7 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub unsafe fn get_mangled_function_in<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         module: &str,
@@ -487,6 +496,7 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub unsafe fn get_function_in<'ctx, F: UnsafeOrcFn>(
         &'ctx self,
         module: &str,
@@ -562,7 +572,7 @@ impl OrcEngine {
     }
     
     #[inline] // This is only used in two places (as of writing this comment), so this should be marked as inline.
-    fn add_object_from_memory_internal<'guard>(
+    fn internal_add_object_from_memory<'guard>(
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
@@ -605,13 +615,14 @@ impl OrcEngine {
     }
     
     #[must_use]
+    #[inline]
     pub fn add_object_from_memory(
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
         local_symbol_table: Option<SymbolTable>,
     ) -> Result<(), OrcError> {
-        self.add_object_from_memory_internal(
+        self.internal_add_object_from_memory(
             name,
             memory_buffer,
             local_symbol_table,
@@ -636,7 +647,7 @@ impl OrcEngine {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
         let mem_buff = MemoryBuffer::create_from_file(object_file_path.as_ref())?;
-        self.add_object_from_memory_internal(
+        self.internal_add_object_from_memory(
             name,
             &mem_buff,
             local_symbol_table,
