@@ -26,26 +26,8 @@ pub(crate) struct GlobalSymbolTable<'ctx> {
 
 // TODOC (ErisianArchitect): impl GlobalSymbolTable
 impl<'ctx> GlobalSymbolTable<'ctx> {
-    // TODO (ErisianArchitect): Consider removing this and renaming `new_with` to `new`.
     #[must_use]
-    pub(crate) unsafe fn new(jit_stack: LLVMOrcJITStackRef, symbols: Option<&HashMap<String, u64>>) -> Self {
-        Self::new_with(
-            jit_stack,
-            symbols
-                .map(move |table| table
-                    .iter()
-                    .map(move |(name, &addr)| (
-                        unsafe { mangle_symbol(jit_stack, name) },
-                        addr,
-                    ))
-                    .collect()
-                )
-                .unwrap_or_else(HashMap::new)
-        )
-    }
-    
-    #[must_use]
-    pub(crate) fn new_with(jit_stack: LLVMOrcJITStackRef, symbol_table: HashMap<MangledSymbol, u64>) -> Self {
+    pub(crate) fn new(jit_stack: LLVMOrcJITStackRef, symbol_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
             inner: Arc::new(GlobalSymbolTableInner { 
                 table: RwLock::new(symbol_table),
@@ -56,71 +38,14 @@ impl<'ctx> GlobalSymbolTable<'ctx> {
         }
     }
     
-    #[must_use]
-    #[inline]
-    pub(crate) unsafe fn jit_stack(&self) -> LLVMOrcJITStackRef {
-        self.inner.jit_stack
-    }
-    
-    #[must_use]
-    #[inline]
-    pub fn contains_mangled(&self, mangled_symbol: &MangledSymbol) -> bool {
-        self.inner.table.read().unwrap().contains_key(mangled_symbol)
-    }
-    
     #[inline]
     pub fn insert_mangled(&self, mangled_symbol: MangledSymbol, addr: u64) -> Option<u64> {
         self.inner.table.write().unwrap().insert(mangled_symbol, addr)
     }
     
     #[inline]
-    pub fn remove_mangled(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
-        self.inner.table.write().unwrap().remove(mangled_symbol)
-    }
-    
-    #[must_use]
-    #[inline]
-    pub fn contains(&self, symbol: &str) -> bool {
-        let mangled_symbol = unsafe { mangle_symbol(self.inner.jit_stack, symbol) };
-        self.contains_mangled(&mangled_symbol)
-    }
-    
-    #[inline]
-    pub fn insert(&self, symbol: &str, addr: u64) -> Option<u64> {
-        let mangled_symbol = unsafe { mangle_symbol(self.inner.jit_stack, symbol) };
-        self.insert_mangled(mangled_symbol, addr)
-    }
-    
-    #[inline]
-    pub fn remove(&self, symbol: &str) -> Option<u64> {
-        let mangled_symbol = unsafe { mangle_symbol(self.inner.jit_stack, symbol) };
-        self.remove_mangled(&mangled_symbol)
-    }
-    
-    #[inline]
     pub fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
         self.inner.table.read().unwrap().get(mangled_symbol).cloned()
-    }
-    
-    #[inline]
-    pub fn get(&self, symbol: &str) -> Option<u64> {
-        let mangled_symbol = unsafe { mangle_symbol(self.jit_stack(), symbol) };
-        self.get_symbol(&mangled_symbol)
-    }
-    
-    #[inline]
-    pub fn clear(&self) {
-        self.inner.table.write().unwrap().clear()
-    }
-    
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.inner.table.read().unwrap().len()
-    }
-    
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        self.inner.table.read().unwrap().capacity()
     }
 }
 
