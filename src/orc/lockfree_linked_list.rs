@@ -20,7 +20,7 @@ impl<T> LockfreeLinkedListNode<T> {
 }
 
 #[derive(Debug)]
-pub struct LockfreeLinkedList<T> {
+pub(crate) struct LockfreeLinkedList<T> {
     head: AtomicPtr<LockfreeLinkedListNode<T>>,
 }
 
@@ -33,7 +33,8 @@ impl<T> LockfreeLinkedList<T> {
         }
     }
     
-    pub fn push(&self, value: T) {
+    #[must_use]
+    pub fn push(&self, value: T) -> *mut T {
         let mut old_head = self.head.load(Ordering::Acquire);
         let mut node = LockfreeLinkedListNode::new(value);
         let node_ptr = node.as_mut() as *mut LockfreeLinkedListNode<T>;
@@ -46,6 +47,9 @@ impl<T> LockfreeLinkedList<T> {
         }
         // leak the node so that it can be cleaned up later.
         Box::leak(node);
+        // LockfreeLinkedListNode<T> is repr(C) with T as the first field.
+        // That means that a pointer to LockfreeLinkedListNode<T> is also a pointer to T.
+        node_ptr.cast()
     }
 }
 
