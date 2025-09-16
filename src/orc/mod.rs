@@ -10,23 +10,22 @@ TODO (ErisianArchitect):
 */
 
 /* Notes
-I'm not sure how to test crate::listeners since some of the functionality is platform dependent.
+--- I'm not sure how to test crate::listeners since some of the functionality is platform dependent.
+--- The entire Orc Engine is thread-safe, but the JITed code itself can continue executing even after the JITStack has
+    been disposed of. This would cause undefined behavior, likely a segfault. This should be documented, and perhaps
+    even give users of the API the ability to keep the engine alive and then release ownership at some point.
 */
 
 pub mod compile_callback;
 pub mod error;
 pub mod mangled_symbol;
 pub mod function_address;
-pub mod lockfree_linked_list;
+pub(crate) mod lockfree_linked_list;
 pub mod orc_jit_fn;
-// pub mod orc_module;
 pub mod symbol_table;
 
-pub use error::OrcError;
-// use orc_module::OrcModule;
-
 use std::{
-    cell::{Cell, RefCell}, collections::HashMap, mem::transmute_copy, path::Path, rc::Rc, sync::{atomic::AtomicU16, Arc, Mutex, RwLock, RwLockWriteGuard}
+    collections::HashMap, mem::transmute_copy, path::Path, sync::{atomic::AtomicU16, Arc, RwLock, RwLockWriteGuard}
 };
 
 use llvm_sys::orc::{
@@ -48,17 +47,23 @@ use llvm_sys::orc::{
 };
 
 use crate::{
-    error::LLVMErrorString, memory_buffer::MemoryBuffer, module::Module, orc::{
-        compile_callback::LazyCompileCallback, function_address::FunctionAddress, lockfree_linked_list::LockfreeLinkedList, mangled_symbol::{
-            mangle_symbol,
-            MangledSymbol
-        }, orc_jit_fn::{
-            OrcFunction,
-            UnsafeOrcFn
-        }, symbol_table::{
+    error::LLVMErrorString,
+    memory_buffer::MemoryBuffer,
+    module::Module,
+    orc::{
+        compile_callback::{LazyCompileCallback, lazy_compile_callback},
+        error::OrcError,
+        function_address::FunctionAddress,
+        lockfree_linked_list::LockfreeLinkedList,
+        mangled_symbol::{mangle_symbol, MangledSymbol},
+        orc_jit_fn::{OrcFunction, UnsafeOrcFn},
+        symbol_table::{
             orc_engine_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, LocalSymbolTableInner, SymbolTable
-        }
-    }, support::LLVMString, targets::{CodeModel, RelocMode, Target, TargetMachine}, OptimizationLevel
+        },
+    },
+    support::LLVMString,
+    targets::{CodeModel, RelocMode, Target, TargetMachine},
+    OptimizationLevel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -66,8 +71,10 @@ pub enum CompilationMode {
     // Eager compilation is broken for Windows, I believe, so perhaps this should be removed on Windows?
     // https://stackoverflow.com/questions/49866755/rust-llvm-orc-jit-cannot-find-symbol-address
     /// Compile immediately.
-    /// # Warning!
-    /// ***This does not work on Windows.***
+    #[cfg_attr(target_os = "windows", doc = "
+    # Warning!
+    ***This probably will not work on Windows.***
+    ")]
     Eager,
     /// Compile on demand. Functions will not be compiled until their first resolution.
     Lazy,
