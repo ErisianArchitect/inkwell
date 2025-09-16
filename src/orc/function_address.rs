@@ -7,9 +7,7 @@ use crate::orc::orc_jit_fn::UnsafeOrcFn;
 // TODOC (ErisianArchitect): struct FunctionAddress
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FunctionAddress {
-    pub(crate) raw: LLVMOrcTargetAddress
-}
+pub struct FunctionAddress(pub(crate) LLVMOrcTargetAddress);
 
 // SAFETY: LLVMOrcTargetAddress should just be a primitive type, and should be safe to send across thread boundaries.
 //         These traits might be auto-implemented, but I figured it would be a good idea to force their implementation
@@ -19,7 +17,7 @@ unsafe impl Sync for FunctionAddress {}
 
 // TODOC (ErisianArchitect): impl FunctionAddress
 impl FunctionAddress {
-    pub const NULL: Self = Self { raw: 0 };
+    pub const NULL: Self = Self(0);
     
     // Either NULL or null can be removed, but having them both gives users options for when they prefer a function
     // over a const. Everyone hates CAPS LOCK. Also, it means that you can provide `FunctionAddress::null` as input
@@ -34,9 +32,7 @@ impl FunctionAddress {
     #[must_use]
     #[inline]
     pub unsafe fn from_raw(address: LLVMOrcTargetAddress) -> Self {
-        Self {
-            raw: address
-        }
+        Self(address)
     }
     
     #[must_use]
@@ -52,7 +48,7 @@ impl FunctionAddress {
     #[must_use]
     #[inline]
     pub fn raw(self) -> LLVMOrcTargetAddress {
-        self.raw
+        self.0
     }
 }
 
