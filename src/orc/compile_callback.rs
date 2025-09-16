@@ -1,17 +1,19 @@
 
 
-use std::{ffi::c_void, sync::{Mutex}};
+use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use llvm_sys::{error::LLVMErrorRef, orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress}};
 
 use crate::orc::{
-    function_address::FunctionAddress, OrcEngine,
+    function_address::FunctionAddress, OrcEngine, OrcEngineInner,
 };
 
 // llvm-sys has an incorrect definition for LLVMOrcLazyCompileCallbackFn, so there needs to be a correct definition for
 // LLVMOrcCreateLazyCompileCallback to work.
 
-pub type LLVMOrcLazyCompileCallbackFn
+pub(crate) type WeakOrcEngine = std::sync::Weak<OrcEngineInner>;
+
+pub(crate) type LLVMOrcLazyCompileCallbackFn
     = Option<extern "C" fn(jit_stack: LLVMOrcJITStackRef, context: *mut c_void) -> LLVMOrcTargetAddress>;
 
 extern "C" {
@@ -35,21 +37,32 @@ impl<F: FnOnce(OrcEngine) -> FunctionAddress + Send + Sync + 'static> LazyCompil
 }
 
 pub struct LazyCompileCallback {
-    callback: Mutex<Option<(OrcEngine, Box<dyn LazyCompiler>)>>,
+    // The idea is that the LazyCompiler will only be used a single time, but may not be used at all.
+    // So the LazyCompileCallback lives inside of the OrcEngine that it is registered to, and also carries its own
+    // weak reference to the OrcEngineInner. This prevents a cycle that would cause a leak.
+    // When the compile function is called, the weak reference is upgraded. If the upgrade fails, the compile function
+    // will return FunctionAddress::NULL.
+    callback: Mutex<Option<(WeakOrcEngine, Box<dyn LazyCompiler>)>>,
 }
 
 impl LazyCompileCallback {
     #[must_use]
     #[inline]
-    pub fn new<F: LazyCompiler>(engine: OrcEngine, callback: F) -> Self {
+    pub fn new<F: LazyCompiler>(engine: &OrcEngine, callback: F) -> Self {
         Self {
-            callback: Mutex::new(Some((engine, Box::new(callback)))),
+            callback: Mutex::new(Some((Arc::downgrade(&engine.inner), Box::new(callback)))),
         }
     }
     
     pub fn compile(&self) -> FunctionAddress {
         let mut callback_guard = self.callback.lock().unwrap();
-        if let Some((engine, callback)) = callback_guard.take() {
+        if let Some((weak_engine, callback)) = callback_guard.take() {
+            let Some(strong_engine) = weak_engine.upgrade() else {
+                return FunctionAddress::NULL;
+            };
+            let engine = OrcEngine {
+                inner: strong_engine
+            };
             callback.compile(engine)
         } else {
             FunctionAddress::NULL
@@ -72,6 +85,5 @@ pub(crate) extern "C" fn lazy_compile_callback(
         return FunctionAddress::null();
     }
     
-    // TODO (ErisianArchitect): lazy_compile_callback implementation
-    unimplemented!()
+    unimplemented!() // TODO (ErisianArchitect): lazy_compile_callback implementation
 }
