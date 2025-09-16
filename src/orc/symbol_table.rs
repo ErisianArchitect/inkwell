@@ -11,28 +11,24 @@ use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::Un
 // TODO (ErisianArchitect): Make stuff thread safe.
 
 #[derive(Debug)]
-pub(crate) struct GlobalSymbolTableInner<'ctx> {
+pub(crate) struct GlobalSymbolTableInner {
     pub(crate) table: RwLock<HashMap<MangledSymbol, u64>>,
-    _lifetime: PhantomData<&'ctx ()>,
 }
 
 // TODOC (ErisianArchitect): struct GlobalSymbolTable
 #[derive(Debug, Clone)]
-pub(crate) struct GlobalSymbolTable<'ctx> {
-    pub(crate) inner: Arc<GlobalSymbolTableInner<'ctx>>,
-    _lifetime: PhantomData<&'ctx ()>,
+pub(crate) struct GlobalSymbolTable {
+    pub(crate) inner: Arc<GlobalSymbolTableInner>,
 }
 
 // TODOC (ErisianArchitect): impl GlobalSymbolTable
-impl<'ctx> GlobalSymbolTable<'ctx> {
+impl GlobalSymbolTable {
     #[must_use]
     pub(crate) fn new(symbol_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
             inner: Arc::new(GlobalSymbolTableInner { 
                 table: RwLock::new(symbol_table),
-                _lifetime: PhantomData,
             }),
-            _lifetime: PhantomData,
         }
     }
     
@@ -48,18 +44,16 @@ impl<'ctx> GlobalSymbolTable<'ctx> {
 }
 
 #[derive(Debug)]
-pub(crate) struct LocalSymbolTableInner<'ctx> {
-    global_table: GlobalSymbolTable<'ctx>,
-    local_table: RwLock<HashMap<MangledSymbol, u64>>,
-    _lifetime: PhantomData<&'ctx ()>,
+pub(crate) struct LocalSymbolTableInner {
+    global_table: GlobalSymbolTable,
+    local_table: HashMap<MangledSymbol, u64>,
 }
 
-impl<'ctx> LocalSymbolTableInner<'ctx> {
+impl<'ctx> LocalSymbolTableInner {
     /// First searches the local table for the symbol, then if not found, searches the global table.
     /// Returns None if the symbol was not found in either table.
     pub(crate) fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
         self.local_table
-            .read().unwrap()
             .get(mangled_symbol).cloned()
             .or_else(move || self.global_table.get_symbol(mangled_symbol))
     }
@@ -67,29 +61,28 @@ impl<'ctx> LocalSymbolTableInner<'ctx> {
 
 // TODOC (ErisianArchitect): struct LocalSymbolTable
 #[derive(Debug, Clone)]
-pub(crate) struct LocalSymbolTable<'ctx> {
+pub(crate) struct LocalSymbolTable {
     // This doesn't need interior mutability, and in fact the LocalSymbolTable should be immutable, but this makes it
     // easy to get a mutable pointer (`*mut LocalSymbolTableInner`) safely.
-    inner: Arc<LocalSymbolTableInner<'ctx>>,
+    inner: Arc<LocalSymbolTableInner>,
 }
 
 // TODOC (ErisianArchitect): impl LocalSymbolTable
-impl<'ctx> LocalSymbolTable<'ctx> {
+impl LocalSymbolTable {
     
     #[must_use]
-    pub(crate) fn new(global_table: GlobalSymbolTable<'ctx>, local_table: HashMap<MangledSymbol, u64>) -> Self {
+    pub(crate) fn new(global_table: GlobalSymbolTable, local_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
             inner: Arc::new(LocalSymbolTableInner {
                 global_table,
-                local_table: RwLock::new(local_table),
-                _lifetime: PhantomData,
+                local_table,
             })
         }
     }
     
     #[must_use]
     #[inline]
-    pub(crate) unsafe fn as_ptr(&self) -> *const LocalSymbolTableInner<'ctx> {
+    pub(crate) unsafe fn as_ptr(&self) -> *const LocalSymbolTableInner {
         Arc::as_ptr(&self.inner)
     }
 }
@@ -149,8 +142,8 @@ impl<'ctx> SymbolTable<'ctx> {
 
 // pub type LLVMOrcSymbolResolverFn = Option<extern "C" fn(_: *const c_char, _: *mut c_void) -> u64>;
 /// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR.
-pub(crate) extern "C" fn module_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> u64 {
-    let sym_table_ptr: *const LocalSymbolTableInner<'static> = context.cast();
+pub(crate) extern "C" fn orc_engine_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> u64 {
+    let sym_table_ptr: *const LocalSymbolTableInner = context.cast();
     if sym_table_ptr.is_null() {
         // This is an error, but we cannot panic here.
         return 0;
