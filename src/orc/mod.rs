@@ -110,7 +110,7 @@ impl OrcEngineFlags {
     
     #[inline]
     fn remove_flag(&self, flag: u16) -> bool {
-        let old_flags = self.0.fetch_and(flag, std::sync::atomic::Ordering::Release);
+        let old_flags = self.0.fetch_and(!flag, std::sync::atomic::Ordering::Release);
         old_flags & flag != 0
     }
 }
@@ -227,7 +227,7 @@ orc_engine_event_listener_flags_impl!(
     has_perf,
     perf,
     add_perf_event_listener,
-    remove_perf_event_listner,
+    remove_perf_event_listener,
     has_perf_event_listener;
 );
 
@@ -549,7 +549,6 @@ impl OrcEngine {
             // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
             (local_table.as_ptr() as *mut LocalSymbolTableInner).cast(),
         ) };
-        module.data_layout.borrow_mut().take();
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(match compilation_mode {
@@ -557,6 +556,7 @@ impl OrcEngine {
                 CompilationMode::Lazy => OrcError::AddLazilyCompiledIRFailure(err_string),
             });
         }
+        module.data_layout.borrow_mut().take();
         modules.insert(name.into(), OrcModule::new(handle, local_table));
         Ok(())
     }
