@@ -1,4 +1,4 @@
-use std::{ffi::CStr, rc::Rc};
+use std::{ffi::CStr, sync::Arc};
 
 use llvm_sys::error::{LLVMDisposeErrorMessage, LLVMGetErrorMessage, LLVMOpaqueError};
 
@@ -31,6 +31,8 @@ pub enum Error {
     EmptyNameError,
     #[error("Metadata is expected to be a node.")]
     GlobalMetadataError,
+    #[error("OrcError: {0}")]
+    OrcError(#[from] crate::orc::OrcError),
 }
 
 struct LLVMErrorStringInner {
@@ -64,7 +66,7 @@ impl LLVMErrorStringInner {
 // TODOC (ErisianArchitect): struct LLVMErrorString
 #[derive(Clone)]
 pub struct LLVMErrorString {
-    inner: Rc<LLVMErrorStringInner>,
+    inner: Arc<LLVMErrorStringInner>,
 }
 
 // TODOC (ErisianArchitect): impl LLVMErrorString
@@ -76,16 +78,17 @@ impl LLVMErrorString {
         debug_assert!(!opaque.is_null(), "opaque: *mut LLVMOpaqueError cannot be null.");
         // cstr will always be non-null if opaque is non-null and comes from LLVM.
         let cstr = LLVMGetErrorMessage(opaque);
+        debug_assert!(!cstr.is_null(), "Returned error message was null.");
         let len = libc::strlen(cstr);
         Self {
-            inner: Rc::new(LLVMErrorStringInner {
+            inner: Arc::new(LLVMErrorStringInner {
                 cstr,
                 len,
             })
         }
     }
     
-    /// Gets the length of the memory buffer of the error message string.
+    /// Gets the length of the memory buffer of the error message string. This is the string length + 1 for the null terminator (`\0`).
     #[must_use]
     #[inline]
     pub fn buffer_length(&self) -> usize {
@@ -93,8 +96,8 @@ impl LLVMErrorString {
     }
 
     /// Converts the [LLVMErrorString] into a [str].
-    #[must_use]
     #[cfg_attr(debug_assertions, track_caller)]
+    #[must_use]
     #[inline]
     pub fn to_str(&self) -> &str {
         self.inner.to_str()
