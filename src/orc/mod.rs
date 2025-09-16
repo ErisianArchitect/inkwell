@@ -104,46 +104,14 @@ impl OrcEngineFlags {
     
     #[inline]
     fn add_flag(&self, flag: u16) -> bool {
-        let mut flags = self.0.load(std::sync::atomic::Ordering::Acquire);
-        loop {
-            if flags & flag == flag {
-                return false;
-            }
-            let result = self.0.compare_exchange(
-                flags,
-                flags | flag,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-            match result {
-                Ok(_) => return true,
-                Err(actual) => {
-                    flags = actual;
-                }
-            }
-        }
+        let old_flags = self.0.fetch_or(flag, std::sync::atomic::Ordering::Release);
+        old_flags & flag != flag
     }
     
     #[inline]
     fn remove_flag(&self, flag: u16) -> bool {
-        let mut flags = self.0.load(std::sync::atomic::Ordering::Acquire);
-        loop {
-            if flags & flag == 0 {
-                return false;
-            }
-            let result = self.0.compare_exchange(
-                flags,
-                flags & !flag,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-            match result {
-                Ok(_) => return true,
-                Err(actual) => {
-                    flags = actual;
-                }
-            }
-        }
+        let old_flags = self.0.fetch_and(flag, std::sync::atomic::Ordering::Release);
+        old_flags & flag != 0
     }
 }
 
