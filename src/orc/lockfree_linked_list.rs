@@ -37,19 +37,17 @@ impl<T> LockfreeLinkedList<T> {
     pub fn push(&self, value: T) -> *mut T {
         let mut old_head = self.head.load(Ordering::Acquire);
         let mut node = LockfreeLinkedListNode::new(value);
-        let node_ptr = node.as_mut() as *mut LockfreeLinkedListNode<T>;
         loop {
             node.next.store(old_head, Ordering::Relaxed);
-            match self.head.compare_exchange_weak(old_head, node_ptr, Ordering::AcqRel, Ordering::Acquire) {
+            match self.head.compare_exchange_weak(old_head, &mut *node, Ordering::AcqRel, Ordering::Acquire) {
                 Ok(_) => break,
                 Err(head) => old_head = head,
             }
         }
-        // leak the node so that it can be cleaned up later.
-        Box::leak(node);
         // LockfreeLinkedListNode<T> is repr(C) with T as the first field.
         // That means that a pointer to LockfreeLinkedListNode<T> is also a pointer to T.
-        node_ptr.cast()
+        // leak the node so that it can be cleaned up later.
+        Box::into_raw(node).cast()
     }
 }
 
