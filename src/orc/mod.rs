@@ -17,6 +17,7 @@ pub mod compile_callback;
 pub mod error;
 pub mod mangled_symbol;
 pub mod function_address;
+pub mod lockfree_linked_list;
 pub mod orc_jit_fn;
 // pub mod orc_module;
 pub mod symbol_table;
@@ -25,7 +26,7 @@ pub use error::OrcError;
 // use orc_module::OrcModule;
 
 use std::{
-    cell::{Cell, RefCell}, collections::HashMap, mem::transmute_copy, path::Path, rc::Rc, sync::{atomic::AtomicU16, Arc, RwLock, RwLockWriteGuard}
+    cell::{Cell, RefCell}, collections::HashMap, mem::transmute_copy, path::Path, rc::Rc, sync::{atomic::AtomicU16, Arc, Mutex, RwLock, RwLockWriteGuard}
 };
 
 use llvm_sys::orc::{
@@ -48,7 +49,7 @@ use llvm_sys::orc::{
 
 use crate::{
     error::LLVMErrorString, memory_buffer::MemoryBuffer, module::Module, orc::{
-        function_address::FunctionAddress, mangled_symbol::{
+        compile_callback::LazyCompileCallback, function_address::FunctionAddress, lockfree_linked_list::LockfreeLinkedList, mangled_symbol::{
             mangle_symbol,
             MangledSymbol
         }, orc_jit_fn::{
@@ -250,6 +251,7 @@ pub(crate) struct OrcEngineInner {
     pub(crate) symbol_table: GlobalSymbolTable,
     pub(crate) modules: RwLock<HashMap<Box<str>, OrcModule>>,
     pub(crate) flags: OrcEngineFlags,
+    pub(crate) lazy_compile_callbacks: LockfreeLinkedList<LazyCompileCallback>,
 }
 
 impl Drop for OrcEngineInner {
@@ -284,6 +286,7 @@ impl OrcEngine {
                 symbol_table: GlobalSymbolTable::new(HashMap::new()),
                 modules: RwLock::new(HashMap::new()),
                 flags: OrcEngineFlags::new(),
+                lazy_compile_callbacks: LockfreeLinkedList::new(),
             })
         })
     }
