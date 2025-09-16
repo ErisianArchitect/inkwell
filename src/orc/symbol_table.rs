@@ -13,7 +13,6 @@ use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::Un
 #[derive(Debug)]
 pub(crate) struct GlobalSymbolTableInner<'ctx> {
     pub(crate) table: RwLock<HashMap<MangledSymbol, u64>>,
-    pub(crate) jit_stack: LLVMOrcJITStackRef,
     _lifetime: PhantomData<&'ctx ()>,
 }
 
@@ -27,11 +26,10 @@ pub(crate) struct GlobalSymbolTable<'ctx> {
 // TODOC (ErisianArchitect): impl GlobalSymbolTable
 impl<'ctx> GlobalSymbolTable<'ctx> {
     #[must_use]
-    pub(crate) fn new(jit_stack: LLVMOrcJITStackRef, symbol_table: HashMap<MangledSymbol, u64>) -> Self {
+    pub(crate) fn new(symbol_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
             inner: Arc::new(GlobalSymbolTableInner { 
                 table: RwLock::new(symbol_table),
-                jit_stack,
                 _lifetime: PhantomData,
             }),
             _lifetime: PhantomData,

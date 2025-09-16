@@ -322,7 +322,7 @@ impl OrcEngine {
             inner: Arc::new(OrcEngineInner {
                 jit_stack,
                 // The symbol_table will live as long as the OrcEngine, but it has a lifetime attached.
-                symbol_table: unsafe { std::mem::transmute(GlobalSymbolTable::new(jit_stack, HashMap::new())) },
+                symbol_table: unsafe { std::mem::transmute(GlobalSymbolTable::new(HashMap::new())) },
                 modules: RwLock::new(HashMap::new()),
                 flags: OrcEngineFlags::new(),
             })
