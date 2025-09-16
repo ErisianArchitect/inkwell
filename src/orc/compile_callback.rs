@@ -55,7 +55,7 @@ impl LazyCompileCallback {
         }
     }
     
-    pub(crate) fn compile(&self) -> FunctionAddress {
+    fn compile(&self) -> FunctionAddress {
         let mut callback_guard = self.callback.lock().unwrap();
         if let Some((weak_engine, callback)) = callback_guard.take() {
             let Some(strong_engine) = weak_engine.upgrade() else {
@@ -79,6 +79,9 @@ impl std::fmt::Debug for LazyCompileCallback {
 
 // TODOC (ErisianArchitect): fn lazy_compile_callback
 pub(crate) extern "C" fn lazy_compile_callback(
+    // This is unused because we need access to the OrcEngine, which lives inside the LazyCompileCallback. Consider
+    // using a mutable static to store a hashmap of <LLVMOrcJITStackRef, std::sync::Weak<OrcEngine>> to reduce the
+    // memory footprint of the LazyCompileCallback.
     jit_stack: LLVMOrcJITStackRef,
     context: *const LazyCompileCallback,
 ) -> FunctionAddress {
