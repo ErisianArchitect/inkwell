@@ -18,6 +18,8 @@ pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLV
 pub enum OrcError {
     #[error("Failed to create Orc JIT engine.")]
     CreateInstanceFailure,
+    #[error("Failed to create the Target Machine.")]
+    CreateTargetMachineFailure,
     #[error("Failed to create indirect stub: {0}")]
     CreateIndirectStubFailure(LLVMErrorString),
     #[error("Failed to create eagerly compiled IR module: {0}")]
