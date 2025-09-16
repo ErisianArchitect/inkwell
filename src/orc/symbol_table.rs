@@ -1,4 +1,4 @@
-use std::{cell::{BorrowError, RefCell}, collections::HashMap, ffi::CString, marker::PhantomData, mem::transmute_copy, os::raw::c_void, pin::Pin, ptr, rc::{Rc, Weak as WeakRc}};
+use std::{cell::{BorrowError, RefCell}, collections::HashMap, ffi::CString, marker::PhantomData, mem::transmute_copy, os::raw::c_void, pin::Pin, ptr, rc::{Rc, Weak as WeakRc}, sync::{Arc, RwLock}};
 
 use libc::c_char;
 use llvm_sys::orc::{LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
@@ -8,22 +8,25 @@ use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::Un
 // TODO (ErisianArchitect): Create IntoSymbolTable trait and implement for some types.
 //                          IntoSymbolTable should be used to create a HashMap<MangledSymbol, u64>.
 
+// TODO (ErisianArchitect): Make stuff thread safe.
+
 #[derive(Debug)]
 pub(crate) struct GlobalSymbolTableInner<'ctx> {
-    pub(crate) map: RefCell<HashMap<MangledSymbol, u64>>,
+    pub(crate) table: RwLock<HashMap<MangledSymbol, u64>>,
     pub(crate) jit_stack: LLVMOrcJITStackRef,
     _lifetime: PhantomData<&'ctx ()>,
 }
 
 // TODOC (ErisianArchitect): struct GlobalSymbolTable
 #[derive(Debug, Clone)]
-pub struct GlobalSymbolTable<'ctx> {
-    pub(crate) inner: Rc<GlobalSymbolTableInner<'ctx>>,
+pub(crate) struct GlobalSymbolTable<'ctx> {
+    pub(crate) inner: Arc<GlobalSymbolTableInner<'ctx>>,
     _lifetime: PhantomData<&'ctx ()>,
 }
 
 // TODOC (ErisianArchitect): impl GlobalSymbolTable
 impl<'ctx> GlobalSymbolTable<'ctx> {
+    // TODO (ErisianArchitect): Consider removing this and renaming `new_with` to `new`.
     #[must_use]
     pub(crate) unsafe fn new(jit_stack: LLVMOrcJITStackRef, symbols: Option<&HashMap<String, u64>>) -> Self {
         Self::new_with(
@@ -44,8 +47,8 @@ impl<'ctx> GlobalSymbolTable<'ctx> {
     #[must_use]
     pub(crate) fn new_with(jit_stack: LLVMOrcJITStackRef, symbol_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
-            inner: Rc::new(GlobalSymbolTableInner { 
-                map: RefCell::new(symbol_table),
+            inner: Arc::new(GlobalSymbolTableInner { 
+                table: RwLock::new(symbol_table),
                 jit_stack,
                 _lifetime: PhantomData,
             }),
@@ -62,17 +65,17 @@ impl<'ctx> GlobalSymbolTable<'ctx> {
     #[must_use]
     #[inline]
     pub fn contains_mangled(&self, mangled_symbol: &MangledSymbol) -> bool {
-        self.inner.map.borrow().contains_key(mangled_symbol)
+        self.inner.table.read().unwrap().contains_key(mangled_symbol)
     }
     
     #[inline]
     pub fn insert_mangled(&self, mangled_symbol: MangledSymbol, addr: u64) -> Option<u64> {
-        self.inner.map.borrow_mut().insert(mangled_symbol, addr)
+        self.inner.table.write().unwrap().insert(mangled_symbol, addr)
     }
     
     #[inline]
     pub fn remove_mangled(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
-        self.inner.map.borrow_mut().remove(mangled_symbol)
+        self.inner.table.write().unwrap().remove(mangled_symbol)
     }
     
     #[must_use]
@@ -96,7 +99,7 @@ impl<'ctx> GlobalSymbolTable<'ctx> {
     
     #[inline]
     pub fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
-        self.inner.map.borrow().get(mangled_symbol).cloned()
+        self.inner.table.read().unwrap().get(mangled_symbol).cloned()
     }
     
     #[inline]
@@ -107,24 +110,24 @@ impl<'ctx> GlobalSymbolTable<'ctx> {
     
     #[inline]
     pub fn clear(&self) {
-        self.inner.map.borrow_mut().clear()
+        self.inner.table.write().unwrap().clear()
     }
     
     #[inline]
     pub fn len(&self) -> usize {
-        self.inner.map.borrow().len()
+        self.inner.table.read().unwrap().len()
     }
     
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.inner.map.borrow().capacity()
+        self.inner.table.read().unwrap().capacity()
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct LocalSymbolTableInner<'ctx> {
     global_table: GlobalSymbolTable<'ctx>,
-    local_table: HashMap<MangledSymbol, u64>,
+    local_table: RwLock<HashMap<MangledSymbol, u64>>,
     _lifetime: PhantomData<&'ctx ()>,
 }
 
@@ -133,8 +136,8 @@ impl<'ctx> LocalSymbolTableInner<'ctx> {
     /// Returns None if the symbol was not found in either table.
     pub(crate) fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
         self.local_table
-            .get(mangled_symbol)
-            .cloned()
+            .read().unwrap()
+            .get(mangled_symbol).cloned()
             .or_else(move || self.global_table.get_symbol(mangled_symbol))
     }
 }
@@ -144,7 +147,7 @@ impl<'ctx> LocalSymbolTableInner<'ctx> {
 pub(crate) struct LocalSymbolTable<'ctx> {
     // This doesn't need interior mutability, and in fact the LocalSymbolTable should be immutable, but this makes it
     // easy to get a mutable pointer (`*mut LocalSymbolTableInner`) safely.
-    inner: Rc<RefCell<LocalSymbolTableInner<'ctx>>>,
+    inner: Arc<LocalSymbolTableInner<'ctx>>,
 }
 
 // TODOC (ErisianArchitect): impl LocalSymbolTable
@@ -153,18 +156,18 @@ impl<'ctx> LocalSymbolTable<'ctx> {
     #[must_use]
     pub(crate) fn new(global_table: GlobalSymbolTable<'ctx>, local_table: HashMap<MangledSymbol, u64>) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(LocalSymbolTableInner {
+            inner: Arc::new(LocalSymbolTableInner {
                 global_table,
-                local_table: local_table,
+                local_table: RwLock::new(local_table),
                 _lifetime: PhantomData,
-            }))
+            })
         }
     }
     
     #[must_use]
     #[inline]
-    pub(crate) unsafe fn as_ptr(&self) -> *mut LocalSymbolTableInner<'ctx> {
-        self.inner.as_ptr()
+    pub(crate) unsafe fn as_ptr(&self) -> *const LocalSymbolTableInner<'ctx> {
+        Arc::as_ptr(&self.inner)
     }
 }
 
@@ -224,7 +227,7 @@ impl<'ctx> SymbolTable<'ctx> {
 // pub type LLVMOrcSymbolResolverFn = Option<extern "C" fn(_: *const c_char, _: *mut c_void) -> u64>;
 /// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR.
 pub(crate) extern "C" fn module_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> u64 {
-    let sym_table_ptr: *mut LocalSymbolTableInner<'static> = context.cast();
+    let sym_table_ptr: *const LocalSymbolTableInner<'static> = context.cast();
     if sym_table_ptr.is_null() {
         // This is an error, but we cannot panic here.
         return 0;

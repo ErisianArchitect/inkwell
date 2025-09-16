@@ -58,9 +58,7 @@ use crate::{
             OrcFunction,
             UnsafeOrcFn
         }, symbol_table::{
-            module_symbol_resolver,
-            GlobalSymbolTable,
-            LocalSymbolTable, SymbolTable
+            module_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, LocalSymbolTableInner, SymbolTable
         }
     },
     targets::TargetMachine,
@@ -323,6 +321,7 @@ impl OrcEngine {
         Ok(Self {
             inner: Arc::new(OrcEngineInner {
                 jit_stack,
+                // The symbol_table will live as long as the OrcEngine, but it has a lifetime attached.
                 symbol_table: unsafe { std::mem::transmute(GlobalSymbolTable::new_with(jit_stack, HashMap::new())) },
                 modules: RwLock::new(HashMap::new()),
                 flags: OrcEngineFlags::new(),
@@ -422,7 +421,7 @@ impl OrcEngine {
     #[must_use]
     #[inline]
     pub fn register_mangled_function(&self, mangled_symbol: MangledSymbol, address: FunctionAddress) -> Result<(), OrcError> {
-        unsafe { self.register_mangled_function_raw(mangled_symbol, address.address) }
+        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw) }
     }
     
     #[must_use]
@@ -436,7 +435,7 @@ impl OrcEngine {
     #[inline]
     pub fn register_function(&self, name: &str, address: FunctionAddress) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
-        unsafe { self.register_mangled_function_raw(mangled_symbol, address.address) }
+        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw) }
     }
     
     #[must_use]
@@ -577,9 +576,10 @@ impl OrcEngine {
             &mut handle,
             module.as_mut_ptr(),
             Some(module_symbol_resolver),
-            // // This gets a pointer to the LocalSymbolTableInner within the Rc in the LocalSymbolTable.
-            // // this is used as the context for the module_symbol_resolver.
-            local_table.as_ptr().cast(),
+            // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
+            // this is used as the context for the module_symbol_resolver.
+            // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
+            (local_table.as_ptr() as *mut LocalSymbolTableInner).cast(),
         ) };
         module.data_layout.borrow_mut().take();
         if !err.is_null() {
@@ -593,6 +593,7 @@ impl OrcEngine {
         Ok(())
     }
     
+    #[inline] // This is only used in two places (as of writing this comment), so this should be marked as inline.
     fn add_object_from_memory_internal<'guard>(
         &self,
         name: &str,
@@ -621,7 +622,11 @@ impl OrcEngine {
             &mut handle,
             memory_buffer.as_mut_ptr(),
             Some(module_symbol_resolver),
-            local_table.as_ptr().cast(),
+            // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
+            // this is used as the context for the module_symbol_resolver.
+            // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
+            // The LocalSymbolTable is guaranteed to live as long as the module.
+            (local_table.as_ptr() as *mut LocalSymbolTableInner).cast(),
         ) };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
