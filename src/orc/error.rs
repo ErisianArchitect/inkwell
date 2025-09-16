@@ -14,7 +14,7 @@ pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLV
 }
 
 // TODOC (ErisianArchitect): enum OrcError
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum OrcError {
     #[error("Failed to create Orc JIT engine.")]
     CreateInstanceFailure,
