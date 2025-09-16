@@ -1,10 +1,12 @@
-use std::{ffi::{CStr, CString}, rc::Rc};
+use std::{ffi::{CStr, CString}, sync::Arc};
 use libc::{c_char, strlen};
 use llvm_sys::orc::{LLVMOrcDisposeMangledSymbol, LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
 use crate::support::to_c_str;
 
 // TODOC (ErisianArchitect): mangle_symbol()
+#[must_use]
+#[inline]
 pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) -> MangledSymbol {
     let name_c_str = to_c_str(name);
     let mut symbol: *mut i8 = std::ptr::null_mut();
@@ -22,7 +24,7 @@ pub(crate) struct MangledSymbolInner {
 // TODOC (ErisianArchitect): struct MangledSymbol
 #[derive(Clone)]
 pub struct MangledSymbol {
-    symbol: Rc<MangledSymbolInner>,
+    symbol: Arc<MangledSymbolInner>,
 }
 
 // TODOC (ErisianArchitect): impl MangledSymbol
@@ -35,7 +37,7 @@ impl MangledSymbol {
         // a valid UTF-8 C string.
         let len = strlen(mangled_cstr);
         Self {
-            symbol: Rc::new(MangledSymbolInner { c_str: mangled_cstr, len }),
+            symbol: Arc::new(MangledSymbolInner { c_str: mangled_cstr, len }),
         }
     }
     
