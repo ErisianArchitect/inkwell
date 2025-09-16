@@ -1,6 +1,6 @@
 
 
-use std::{ffi::c_void, sync::{Arc, Mutex}};
+use std::{ffi::c_void, sync::{atomic::{AtomicPtr, Ordering}, Arc, Mutex}};
 
 use llvm_sys::{error::LLVMErrorRef, orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress}};
 
@@ -82,9 +82,9 @@ pub(crate) extern "C" fn lazy_compile_callback(
     jit_stack: LLVMOrcJITStackRef,
     context: *const LazyCompileCallback,
 ) -> FunctionAddress {
-    if context.is_null() {
-        return FunctionAddress::null();
-    }
-    
-    unimplemented!() // TODO (ErisianArchitect): lazy_compile_callback implementation
+    let context_ref = unsafe { context.as_ref() };
+    let Some(context) = context_ref else {
+        return FunctionAddress::NULL;
+    };
+    context.compile()
 }
