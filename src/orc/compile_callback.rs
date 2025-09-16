@@ -27,6 +27,7 @@ extern "C" {
 
 // TODOC (ErisianArchitect): trait LazyCompiler
 pub trait LazyCompiler: Send + Sync + 'static {
+    // Should return FunctionAddress::NULL if compilation fails.
     fn compile(self: Box<Self>, engine: OrcEngine) -> FunctionAddress;
 }
 
@@ -54,7 +55,7 @@ impl LazyCompileCallback {
         }
     }
     
-    pub fn compile(&self) -> FunctionAddress {
+    pub(crate) fn compile(&self) -> FunctionAddress {
         let mut callback_guard = self.callback.lock().unwrap();
         if let Some((weak_engine, callback)) = callback_guard.take() {
             let Some(strong_engine) = weak_engine.upgrade() else {
