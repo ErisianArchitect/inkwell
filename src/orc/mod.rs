@@ -47,10 +47,7 @@ use llvm_sys::orc::{
 };
 
 use crate::{
-    error::LLVMErrorString,
-    memory_buffer::MemoryBuffer,
-    module::Module,
-    orc::{
+    error::LLVMErrorString, memory_buffer::MemoryBuffer, module::Module, orc::{
         function_address::FunctionAddress, mangled_symbol::{
             mangle_symbol,
             MangledSymbol
@@ -58,10 +55,9 @@ use crate::{
             OrcFunction,
             UnsafeOrcFn
         }, symbol_table::{
-            module_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, LocalSymbolTableInner, SymbolTable
+            orc_engine_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, LocalSymbolTableInner, SymbolTable
         }
-    },
-    targets::TargetMachine,
+    }, support::LLVMString, targets::{CodeModel, RelocMode, Target, TargetMachine}, OptimizationLevel
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -236,11 +232,11 @@ pub(crate) struct OrcModule {
     pub(crate) handle: LLVMOrcModuleHandle,
     // This just needs to live as long as the OrcModule exists.
     /// Used for per-module symbol resolution with global symbol table fallback.
-    pub(crate) _symbol_table: LocalSymbolTable<'static>,
+    pub(crate) _symbol_table: LocalSymbolTable,
 }
 
 impl OrcModule {
-    pub(crate) fn new(handle: LLVMOrcModuleHandle, symbol_table: LocalSymbolTable<'_>) -> Self {
+    pub(crate) fn new(handle: LLVMOrcModuleHandle, symbol_table: LocalSymbolTable) -> Self {
         Self {
             handle,
             _symbol_table: unsafe { std::mem::transmute(symbol_table) },
@@ -251,12 +247,8 @@ impl OrcModule {
 #[derive(Debug)]
 pub(crate) struct OrcEngineInner {
     pub(crate) jit_stack: LLVMOrcJITStackRef,
-    pub(crate) symbol_table: GlobalSymbolTable<'static>,
+    pub(crate) symbol_table: GlobalSymbolTable,
     pub(crate) modules: RwLock<HashMap<Box<str>, OrcModule>>,
-    /// 0: GDB_LISTENER registered
-    /// 1: Intel Listener registered
-    /// 2: OProfile Listener registered
-    /// 3: Perf Listener registered
     pub(crate) flags: OrcEngineFlags,
 }
 
@@ -281,7 +273,7 @@ pub struct OrcEngine {
 // TODOC (ErisianArchitect): impl OrcEngine
 impl OrcEngine {
     #[must_use]
-    pub fn new(target_machine: &TargetMachine) -> Result<Self, OrcError> {
+    pub fn with_target_machine(target_machine: &TargetMachine) -> Result<Self, OrcError> {
         let jit_stack = unsafe { LLVMOrcCreateInstance(target_machine.as_mut_ptr()) };
         if jit_stack.is_null() {
             return Err(OrcError::CreateInstanceFailure);
@@ -289,12 +281,54 @@ impl OrcEngine {
         Ok(Self {
             inner: Arc::new(OrcEngineInner {
                 jit_stack,
-                // The symbol_table will live as long as the OrcEngine, but it has a lifetime attached.
-                symbol_table: unsafe { std::mem::transmute(GlobalSymbolTable::new(HashMap::new())) },
+                symbol_table: GlobalSymbolTable::new(HashMap::new()),
                 modules: RwLock::new(HashMap::new()),
                 flags: OrcEngineFlags::new(),
             })
         })
+    }
+    
+    #[must_use]
+    pub fn new(
+        cpu_features: Option<&str>,
+        optimization_level: OptimizationLevel,
+        reloc_mode: RelocMode,
+        code_model: CodeModel,
+    ) -> Result<Self, OrcError> {
+        let default_triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&default_triple).unwrap();
+        // annoyingly, TargetMachine::get_host_cpu_features returns LLVMString, but create_target_machine expects &str.
+        // This enum was created so that the fallback could be lazily initialized.
+        enum StrOrLLVM<'a> {
+            Str(&'a str),
+            LLVM(LLVMString),
+        }
+        impl StrOrLLVM<'_> {
+            #[inline(always)]
+            fn to_str(&self) -> &str {
+                match self {
+                    Self::Str(str) => str,
+                    Self::LLVM(llvm_string) => llvm_string.to_str().unwrap(),
+                }
+            }
+        }
+        let cpu_features = cpu_features
+            .map(StrOrLLVM::Str)
+            .unwrap_or_else(|| StrOrLLVM::LLVM(TargetMachine::get_host_cpu_features()));
+        let target_machine = target.create_target_machine(
+            &default_triple,
+            TargetMachine::get_host_cpu_name().to_str().unwrap(),
+            cpu_features.to_str(),
+            optimization_level,
+            reloc_mode,
+            code_model,
+        ).ok_or_else(move || OrcError::CreateTargetMachineFailure)?;
+        Self::with_target_machine(&target_machine)
+    }
+    
+    #[must_use]
+    pub fn new_default() -> Result<Self, OrcError> {
+        Self::new(None, OptimizationLevel::Default, RelocMode::Default, CodeModel::Default)
     }
     
     #[must_use]
@@ -393,7 +427,7 @@ impl OrcEngine {
     #[must_use]
     #[inline]
     pub fn register_mangled_function(&self, mangled_symbol: MangledSymbol, address: FunctionAddress) -> Result<(), OrcError> {
-        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw) }
+        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw()) }
     }
     
     #[must_use]
@@ -407,7 +441,7 @@ impl OrcEngine {
     #[inline]
     pub fn register_function(&self, name: &str, address: FunctionAddress) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
-        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw) }
+        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw()) }
     }
     
     #[must_use]
@@ -553,7 +587,7 @@ impl OrcEngine {
             self.inner.jit_stack,
             &mut handle,
             module.as_mut_ptr(),
-            Some(module_symbol_resolver),
+            Some(orc_engine_symbol_resolver),
             // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
             // this is used as the context for the module_symbol_resolver.
             // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
@@ -599,7 +633,7 @@ impl OrcEngine {
             self.inner.jit_stack,
             &mut handle,
             memory_buffer.as_mut_ptr(),
-            Some(module_symbol_resolver),
+            Some(orc_engine_symbol_resolver),
             // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
             // this is used as the context for the module_symbol_resolver.
             // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
