@@ -1,9 +1,9 @@
-use std::{cell::{BorrowError, RefCell}, collections::HashMap, ffi::CString, marker::PhantomData, mem::transmute_copy, os::raw::c_void, pin::Pin, ptr, rc::{Rc, Weak as WeakRc}, sync::{Arc, RwLock}};
+use std::{collections::HashMap, marker::PhantomData, mem::transmute_copy, os::raw::c_void, sync::{Arc, RwLock}};
 
 use libc::c_char;
-use llvm_sys::orc::{LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
+use llvm_sys::orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress};
 
-use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcFn, OrcEngine, OrcEngineInner}, support::to_c_str};
+use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcFn}};
 
 // TODO (ErisianArchitect): Create IntoSymbolTable trait and implement for some types.
 //                          IntoSymbolTable should be used to create a HashMap<MangledSymbol, u64>.
@@ -12,7 +12,7 @@ use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::Un
 
 #[derive(Debug)]
 pub(crate) struct GlobalSymbolTableInner {
-    pub(crate) table: RwLock<HashMap<MangledSymbol, u64>>,
+    pub(crate) table: RwLock<HashMap<MangledSymbol, LLVMOrcTargetAddress>>,
 }
 
 // TODOC (ErisianArchitect): struct GlobalSymbolTable
@@ -21,10 +21,14 @@ pub(crate) struct GlobalSymbolTable {
     pub(crate) inner: Arc<GlobalSymbolTableInner>,
 }
 
+// pub struct MultiInsert<'guard> {
+//     table: RwLockWriteGuard<'guard, HashMap<MangledSymbol, LLVMOrcTargetAddress>>
+// }
+
 // TODOC (ErisianArchitect): impl GlobalSymbolTable
 impl GlobalSymbolTable {
     #[must_use]
-    pub(crate) fn new(symbol_table: HashMap<MangledSymbol, u64>) -> Self {
+    pub(crate) fn new(symbol_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>) -> Self {
         Self {
             inner: Arc::new(GlobalSymbolTableInner { 
                 table: RwLock::new(symbol_table),
@@ -33,12 +37,14 @@ impl GlobalSymbolTable {
     }
     
     #[inline]
-    pub fn insert_mangled(&self, mangled_symbol: MangledSymbol, addr: u64) -> Option<u64> {
+    pub fn insert_mangled(&self, mangled_symbol: MangledSymbol, addr: LLVMOrcTargetAddress) -> Option<LLVMOrcTargetAddress> {
         self.inner.table.write().unwrap().insert(mangled_symbol, addr)
     }
     
+    // pub fn multi_insert_mangled(&self, )
+    
     #[inline]
-    pub fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
+    pub fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<LLVMOrcTargetAddress> {
         self.inner.table.read().unwrap().get(mangled_symbol).cloned()
     }
 }
@@ -46,13 +52,13 @@ impl GlobalSymbolTable {
 #[derive(Debug)]
 pub(crate) struct LocalSymbolTableInner {
     global_table: GlobalSymbolTable,
-    local_table: HashMap<MangledSymbol, u64>,
+    local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>,
 }
 
 impl<'ctx> LocalSymbolTableInner {
     /// First searches the local table for the symbol, then if not found, searches the global table.
     /// Returns None if the symbol was not found in either table.
-    pub(crate) fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<u64> {
+    pub(crate) fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<LLVMOrcTargetAddress> {
         self.local_table
             .get(mangled_symbol).cloned()
             .or_else(move || self.global_table.get_symbol(mangled_symbol))
@@ -71,7 +77,7 @@ pub(crate) struct LocalSymbolTable {
 impl LocalSymbolTable {
     
     #[must_use]
-    pub(crate) fn new(global_table: GlobalSymbolTable, local_table: HashMap<MangledSymbol, u64>) -> Self {
+    pub(crate) fn new(global_table: GlobalSymbolTable, local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>) -> Self {
         Self {
             inner: Arc::new(LocalSymbolTableInner {
                 global_table,
@@ -92,7 +98,7 @@ impl LocalSymbolTable {
 pub struct SymbolTable<'ctx> {
     // It's safe for SymbolTable to have the JITStackRef because it is tied to the lifetime of the OrcEngine.
     pub(crate) jit_stack: LLVMOrcJITStackRef,
-    pub(crate) symbols: HashMap<MangledSymbol, u64>,
+    pub(crate) symbols: HashMap<MangledSymbol, LLVMOrcTargetAddress>,
     _lifetime: PhantomData<&'ctx ()>,
 }
 
@@ -109,13 +115,13 @@ impl<'ctx> SymbolTable<'ctx> {
     }
     
     #[inline]
-    pub fn register_mangled<F: UnsafeOrcFn>(&mut self, mangled_symbol: MangledSymbol, function: F) -> Option<u64> {
+    pub fn register_mangled<F: UnsafeOrcFn>(&mut self, mangled_symbol: MangledSymbol, function: F) -> Option<LLVMOrcTargetAddress> {
         let addr: usize = unsafe { transmute_copy(&function) };
-        self.symbols.insert(mangled_symbol, addr as u64)
+        self.symbols.insert(mangled_symbol, addr as LLVMOrcTargetAddress)
     }
     
     #[inline]
-    pub fn register<F: UnsafeOrcFn>(&mut self, name: &str, function: F) -> Option<u64> {
+    pub fn register<F: UnsafeOrcFn>(&mut self, name: &str, function: F) -> Option<LLVMOrcTargetAddress> {
         let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
         self.register_mangled(mangled_symbol, function)
     }
@@ -135,14 +141,14 @@ impl<'ctx> SymbolTable<'ctx> {
     
     #[must_use]
     #[inline]
-    pub(crate) fn take_inner(self) -> HashMap<MangledSymbol, u64> {
+    pub(crate) fn take_inner(self) -> HashMap<MangledSymbol, LLVMOrcTargetAddress> {
         self.symbols
     }
 }
 
 // pub type LLVMOrcSymbolResolverFn = Option<extern "C" fn(_: *const c_char, _: *mut c_void) -> u64>;
 /// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR.
-pub(crate) extern "C" fn orc_engine_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> u64 {
+pub(crate) extern "C" fn orc_engine_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> LLVMOrcTargetAddress {
     let sym_table_ptr: *const LocalSymbolTableInner = context.cast();
     if sym_table_ptr.is_null() {
         // This is an error, but we cannot panic here.
