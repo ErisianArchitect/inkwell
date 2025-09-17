@@ -20,12 +20,11 @@ pub mod compile_callback;
 pub mod error;
 pub mod mangled_symbol;
 pub mod function_address;
-pub(crate) mod lockfree_linked_list;
 pub mod orc_jit_fn;
 pub mod symbol_table;
 
 use std::{
-    collections::HashMap, mem::transmute_copy, path::Path, sync::{atomic::AtomicU16, Arc, RwLock, RwLockWriteGuard}
+    collections::HashMap, mem::transmute_copy, path::Path, sync::{Arc, RwLock, RwLockWriteGuard}
 };
 
 use llvm_sys::orc::{
@@ -37,24 +36,35 @@ use llvm_sys::orc::{
     LLVMOrcDisposeInstance,
     LLVMOrcGetSymbolAddress,
     LLVMOrcGetSymbolAddressIn,
-    LLVMOrcRegisterJITEventListener,
     LLVMOrcRemoveModule,
     LLVMOrcSetIndirectStubPointer,
-    LLVMOrcUnregisterJITEventListener,
     LLVMOrcJITStackRef,
     LLVMOrcModuleHandle,
     LLVMOrcTargetAddress,
 };
 
+// TODO: Update this cfg if any listeners are added that have different requirements.
+#[cfg(any(
+    any(target_os = "linux", unix),
+    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+))]
+use {
+    std::sync::atomic::AtomicU16,
+    llvm_sys::orc::{
+        LLVMOrcRegisterJITEventListener,
+        LLVMOrcUnregisterJITEventListener,
+    }
+};
+
 use crate::{
     error::LLVMErrorString,
+    lockfree_linked_list::{LockfreeLinkedList, LockfreeLinkedListNode},
     memory_buffer::MemoryBuffer,
     module::Module,
     orc::{
-        compile_callback::{LazyCompileCallback, lazy_compile_callback},
+        compile_callback::{lazy_compile_callback, LLVMOrcCreateLazyCompileCallback, LazyCompileCallback, LazyCompiler},
         error::OrcError,
         function_address::FunctionAddress,
-        lockfree_linked_list::LockfreeLinkedList,
         mangled_symbol::{mangle_symbol, MangledSymbol},
         orc_jit_fn::{OrcFunction, UnsafeOrcFn},
         symbol_table::{
@@ -80,9 +90,19 @@ pub enum CompilationMode {
     Lazy,
 }
 
+// TODO: Update this cfg if any listeners are added that have different requirements.
+#[cfg(any(
+    any(target_os = "linux", unix),
+    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+))]
 #[derive(Debug, Default)]
 pub(crate) struct OrcEngineFlags(AtomicU16);
 
+// TODO: Update this cfg if any listeners are added that have different requirements.
+#[cfg(any(
+    any(target_os = "linux", unix),
+    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+))]
 impl OrcEngineFlags {
     #[must_use]
     #[inline]
@@ -92,7 +112,7 @@ impl OrcEngineFlags {
     
     #[must_use]
     #[inline]
-    pub(crate) fn get_flag(&self, flag: u16) -> bool {
+    pub fn get_flag(&self, flag: u16) -> bool {
         self.0.load(std::sync::atomic::Ordering::Acquire) & flag == flag
     }
     
@@ -108,17 +128,21 @@ impl OrcEngineFlags {
     
     #[inline]
     fn add_flag(&self, flag: u16) -> bool {
-        let old_flags = self.0.fetch_or(flag, std::sync::atomic::Ordering::Release);
+        let old_flags = self.0.fetch_or(flag, std::sync::atomic::Ordering::AcqRel);
         old_flags & flag != flag
     }
     
     #[inline]
     fn remove_flag(&self, flag: u16) -> bool {
-        let old_flags = self.0.fetch_and(!flag, std::sync::atomic::Ordering::Release);
+        let old_flags = self.0.fetch_and(!flag, std::sync::atomic::Ordering::AcqRel);
         old_flags & flag != 0
     }
 }
-
+// TODO: Update this cfg if any listeners are added that have different requirements.
+#[cfg(any(
+    any(target_os = "linux", unix),
+    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+))]
 macro_rules! orc_engine_event_listener_flags_impl {
     (
         $(#[$attr:meta])*
@@ -130,23 +154,32 @@ macro_rules! orc_engine_event_listener_flags_impl {
         $remove_listener_name:ident,
         $has_listener_name:ident
     ) => {
+        // TODO: Update this cfg if any listeners are added that have different requirements.
+        #[cfg(any(
+            any(target_os = "linux", unix),
+            all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+        ))]
         impl OrcEngineFlags {
             $(#[$attr])*
-            pub(crate) const $flag_const_name: u16 = $flag_value;
+            pub const $flag_const_name: u16 = $flag_value;
             
             $(#[$attr])*
             #[inline]
-            pub(crate) fn $set_name(&self, on: bool) -> bool {
+            pub fn $set_name(&self, on: bool) -> bool {
                 self.set_flag(Self::$flag_const_name, on)
             }
             
             $(#[$attr])*
             #[inline]
-            pub(crate) fn $has_name(&self) -> bool {
+            pub fn $has_name(&self) -> bool {
                 self.get_flag(Self::$flag_const_name)
             }
         }
-        
+        // TODO: Update this cfg if any listeners are added that have different requirements.
+        #[cfg(any(
+            any(target_os = "linux", unix),
+            all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+        ))]
         impl OrcEngine {
             $(#[$attr])*
             pub fn $add_listener_name(&self) {
@@ -173,6 +206,7 @@ macro_rules! orc_engine_event_listener_flags_impl {
         }
     };
     ($(
+        // Attributes apply to all items.
         $(#[$attr:meta])*
         $flag_const_name:ident = $flag_value:expr,
         $set_name:ident, $has_name:ident,
@@ -196,6 +230,11 @@ macro_rules! orc_engine_event_listener_flags_impl {
     };
 }
 
+// TODO: Update this cfg if any listeners are added that have different requirements.
+#[cfg(any(
+    any(target_os = "linux", unix),
+    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+))]
 orc_engine_event_listener_flags_impl!(
     #[cfg(any(target_os = "linux", unix))]
     GDB_LISTENER_REGISTERED         = 1 << 0,
@@ -206,8 +245,7 @@ orc_engine_event_listener_flags_impl!(
     remove_gdb_registration_listener,
     has_gdb_registration_listener;
     
-    // TODO (ErisianArchitect): Add vtune feature flag, and conditionally compile for vtune.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
     INTEL_LISTENER_REGISTERED       = 1 << 1,
     set_intel,
     has_intel,
@@ -257,8 +295,14 @@ pub(crate) struct OrcEngineInner {
     pub(crate) jit_stack: LLVMOrcJITStackRef,
     pub(crate) symbol_table: GlobalSymbolTable,
     pub(crate) modules: RwLock<HashMap<Box<str>, OrcModule>>,
-    pub(crate) flags: OrcEngineFlags,
     pub(crate) lazy_compile_callbacks: LockfreeLinkedList<LazyCompileCallback>,
+    // TODO: Update this cfg if any listeners are added that have different requirements.
+    // The flags do not need to be included if there are no available listeners.
+    #[cfg(any(
+        any(target_os = "linux", unix),
+        all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+    ))]
+    pub(crate) flags: OrcEngineFlags,
 }
 
 impl Drop for OrcEngineInner {
@@ -282,28 +326,41 @@ pub struct OrcEngine {
 // TODOC (ErisianArchitect): impl OrcEngine
 impl OrcEngine {
     #[must_use]
-    pub fn with_target_machine(target_machine: &TargetMachine) -> Result<Self, OrcError> {
+    pub fn with_target_machine(target_machine: TargetMachine) -> Result<Self, OrcError> {
         let jit_stack = unsafe { LLVMOrcCreateInstance(target_machine.as_mut_ptr()) };
         if jit_stack.is_null() {
             return Err(OrcError::CreateInstanceFailure);
         }
+        // ownership of target_machine is passed to jit stack successfully
+        // so we forget it so that it doesn't get double-freed.
+        // This must happen after the `jit_stack.is_null()` check, because
+        // it must be properly disposed if creation of the JITStack fails.
+        // https://github.com/llvm/llvm-project/blob/1fdec59bffc11ae37eb51a1b9869f0696bfd5312/llvm/include/llvm-c/OrcBindings.h#L42
+        std::mem::forget(target_machine);
         Ok(Self {
             inner: Arc::new(OrcEngineInner {
                 jit_stack,
                 symbol_table: GlobalSymbolTable::new(HashMap::new()),
                 modules: RwLock::new(HashMap::new()),
-                flags: OrcEngineFlags::new(),
                 lazy_compile_callbacks: LockfreeLinkedList::new(),
+                // TODO: Update this cfg if any listeners are added that have different requirements.
+                // The flags do not need to be included if there are no available listeners.
+                #[cfg(any(
+                    any(target_os = "linux", unix),
+                    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+                ))]
+                flags: OrcEngineFlags::new(),
             })
         })
     }
     
     #[must_use]
     pub fn new(
-        cpu_features: Option<&str>,
         optimization_level: OptimizationLevel,
         reloc_mode: RelocMode,
         code_model: CodeModel,
+        // If cpu_features is omitted, it defaults to TargetMachine::get_host_cpu_features().
+        cpu_features: Option<&str>,
     ) -> Result<Self, OrcError> {
         let default_triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&default_triple).unwrap();
@@ -332,13 +389,13 @@ impl OrcEngine {
             optimization_level,
             reloc_mode,
             code_model,
-        ).ok_or_else(move || OrcError::CreateTargetMachineFailure)?;
-        Self::with_target_machine(&target_machine)
+        ).ok_or_else(|| OrcError::CreateTargetMachineFailure)?;
+        Self::with_target_machine(target_machine)
     }
     
     #[must_use]
     pub fn new_default() -> Result<Self, OrcError> {
-        Self::new(None, OptimizationLevel::Default, RelocMode::Default, CodeModel::Default)
+        Self::new(OptimizationLevel::Default, RelocMode::Default, CodeModel::Default, None)
     }
     
     #[must_use]
@@ -550,6 +607,8 @@ impl OrcEngine {
         self.get_mangled_function_in(module, &mangled_symbol)
     }
     
+    // NOTE: I'm pretty sure eager compilation is useless on Windows because I don't think that you can lookup symbols
+    // after compilation.
     /// Adds a module to the Orc JIT engine. The module is considered finalized, and cannot be modified after being
     /// added to the engine.
     /// Use [CompilationMode::Eager] to eagerly compile the module (compilation is immediate).
@@ -615,6 +674,8 @@ impl OrcEngine {
         Ok(())
     }
     
+    // NOTE: I'm pretty sure this is useless on Windows because I don't think that you can lookup symbols from objects
+    // added to the engine.
     #[inline] // This is only used in two places (as of writing this comment), so this should be marked as inline.
     fn internal_add_object_from_memory<'guard>(
         &self,
@@ -658,6 +719,8 @@ impl OrcEngine {
         Ok(())
     }
     
+    // NOTE: I'm pretty sure this is useless on Windows because I don't think that you can lookup symbols from objects
+    // added to the engine.
     #[must_use]
     #[inline]
     pub fn add_object_from_memory(
@@ -675,6 +738,8 @@ impl OrcEngine {
         )
     }
     
+    // NOTE: I'm pretty sure this is useless on Windows because I don't think that you can lookup symbols from objects
+    // added to the engine.
     #[must_use]
     pub fn add_object_file<'ctx, P: AsRef<Path>>(
         &self,
@@ -718,5 +783,27 @@ impl OrcEngine {
     #[inline]
     pub fn has_module(&self, name: &str) -> bool {
         self.inner.modules.read().unwrap().contains_key(name)
+    }
+    
+    #[must_use]
+    pub fn create_lazy_compile_callback<C: LazyCompiler>(&self, compiler: C) -> Result<FunctionAddress, OrcError> {
+        let lazy_compiler = LazyCompileCallback::new(self, compiler);
+        let node = LockfreeLinkedListNode::new(lazy_compiler);
+        // Add the callback node to the callbacks linked list to keep it alive while the OrcEngine is alive.
+        unsafe { self.inner.lazy_compile_callbacks.push_raw(&node.next, &*node); }
+        let mut ret_addr = 0;
+        let err = unsafe {
+            LLVMOrcCreateLazyCompileCallback(
+                self.jit_stack_ref(),
+                &mut ret_addr,
+                Some(lazy_compile_callback),
+                Box::into_raw(node).cast(),
+            )
+        };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            return Err(OrcError::CreateLazyCompileCallbackFailure(err_string));
+        }
+        Ok(FunctionAddress(ret_addr))
     }
 }
