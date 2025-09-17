@@ -2,6 +2,15 @@ use std::{ffi::CStr, sync::Arc};
 
 use llvm_sys::error::{LLVMDisposeErrorMessage, LLVMGetErrorMessage, LLVMOpaqueError};
 
+// TODO: Update this OrcError import when new versions of LLVM are added.
+//       Right now, it is known to support up to llvm20-1, but in the future the import might be different if
+//       LLVM Orc V3 is ever created.
+#[llvm_versions(..=11)]
+use crate::orc::error::OrcError;
+#[llvm_versions(12..20.1)]
+use crate::orc2::error::OrcError;
+
+
 /// Errors for operations involving alignment.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AlignmentError {
@@ -32,7 +41,7 @@ pub enum Error {
     #[error("Metadata is expected to be a node.")]
     GlobalMetadataError,
     #[error("OrcError: {0}")]
-    OrcError(#[from] crate::orc::OrcError),
+    OrcError(#[from] OrcError),
 }
 
 struct LLVMErrorStringInner {
