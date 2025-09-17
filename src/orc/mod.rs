@@ -71,7 +71,7 @@ use crate::{
             orc_engine_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, LocalSymbolTableInner, SymbolTable
         },
     },
-    support::LLVMString,
+    support::{to_c_str, LLVMString},
     targets::{CodeModel, RelocMode, Target, TargetMachine},
     OptimizationLevel,
 };
@@ -420,25 +420,15 @@ impl OrcEngine {
     }
     
     #[must_use]
-    pub fn contains_mangled_symbol(&self, mangled_symbol: &MangledSymbol) -> Result<bool, OrcError> {
-        let mut symbol_result = 0u64;
-        let err = unsafe {
-            LLVMOrcGetSymbolAddress(self.inner.jit_stack, &mut symbol_result, mangled_symbol.to_cstr().as_ptr())
-        };
-        if !err.is_null() {
-            return Err(OrcError::SymbolAddressLookupFailure(unsafe { LLVMErrorString::new(err) }));
-        }
-        if symbol_result == 0 {
-            return Ok(false);
-        }
-        Ok(true)
+    #[inline]
+    pub fn contains_symbol(&self, name: &str) -> Result<bool, OrcError> {
+        Ok(unsafe { self.get_symbol_address(name)? } != 0)
     }
     
     #[must_use]
     #[inline]
-    pub fn contains_symbol(&self, name: &str) -> Result<bool, OrcError> {
-        let mangled_symbol = self.mangle_symbol(name);
-        self.contains_mangled_symbol(&mangled_symbol)
+    pub fn contains_symbol_in(&self, module: &str, symbol: &str) -> Result<bool, OrcError> {
+        Ok(unsafe { self.get_symbol_address_in(module, symbol)? } != 0)
     }
     
     #[must_use]
@@ -512,48 +502,19 @@ impl OrcEngine {
     }
     
     #[must_use]
-    pub unsafe fn get_mangled_symbol_address(&self, mangled_symbol: &MangledSymbol) -> Result<usize, OrcError> {
-        let mut symbol_result = 0u64;
-        let err = unsafe {
-            LLVMOrcGetSymbolAddress(self.inner.jit_stack, &mut symbol_result, mangled_symbol.as_ptr())
-        };
-        if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::new(err) };
-            return Err(OrcError::SymbolAddressLookupFailure(err_string));
-        }
-        if symbol_result == 0 {
-            return Err(OrcError::MangledSymbolNotFound(mangled_symbol.clone()));
-        }
-        Ok(symbol_result as usize)
-    }
-    
-    #[must_use]
     #[inline]
     pub unsafe fn get_symbol_address(&self, name: &str) -> Result<usize, OrcError> {
-        let mangled_symbol = self.mangle_symbol(name);
-        self.get_mangled_symbol_address(&mangled_symbol)
-    }
-    
-    #[must_use]
-    pub unsafe fn get_mangled_symbol_address_in(&self, module: &str, mangled_symbol: &MangledSymbol) -> Result<usize, OrcError> {
-        let Some(&OrcModule { handle: module_handle, .. }) = self.inner.modules.read().unwrap().get(module) else {
-            return Err(OrcError::ModuleNotFound(module.into()));
-        };
+        let cname = to_c_str(name);
         let mut symbol_result = 0u64;
         let err = unsafe {
-            LLVMOrcGetSymbolAddressIn(
-                self.inner.jit_stack,
-                &mut symbol_result,
-                module_handle,
-                mangled_symbol.to_cstr().as_ptr(),
-            )
+            LLVMOrcGetSymbolAddress(self.inner.jit_stack, &mut symbol_result, cname.as_ptr())
         };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(OrcError::SymbolAddressLookupFailure(err_string));
         }
         if symbol_result == 0 {
-            return Err(OrcError::MangledSymbolNotFound(mangled_symbol.clone()));
+            return Err(OrcError::SymbolNotFound(name.into()));
         }
         Ok(symbol_result as usize)
     }
@@ -561,18 +522,27 @@ impl OrcEngine {
     #[must_use]
     #[inline]
     pub unsafe fn get_symbol_address_in(&self, module: &str, symbol: &str) -> Result<usize, OrcError> {
-        let mangled_symbol = self.mangle_symbol(symbol);
-        self.get_mangled_symbol_address_in(module, &mangled_symbol)
-    }
-    
-    #[must_use]
-    #[inline]
-    pub unsafe fn get_mangled_function<'ctx, F: UnsafeOrcFn>(
-        &'ctx self,
-        mangled_symbol: &MangledSymbol
-    ) -> Result<OrcFunction<'ctx, F>, OrcError> {
-        let addr = self.get_mangled_symbol_address(mangled_symbol)?;
-        Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
+        let Some(&OrcModule { handle: module_handle, .. }) = self.inner.modules.read().unwrap().get(module) else {
+            return Err(OrcError::ModuleNotFound(module.into()));
+        };
+        let cname = to_c_str(symbol);
+        let mut symbol_result = 0u64;
+        let err = unsafe {
+            LLVMOrcGetSymbolAddressIn(
+                self.inner.jit_stack,
+                &mut symbol_result,
+                module_handle,
+                cname.as_ptr(),
+            )
+        };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            return Err(OrcError::SymbolAddressLookupFailure(err_string));
+        }
+        if symbol_result == 0 {
+            return Err(OrcError::SymbolNotFound(symbol.into()));
+        }
+        Ok(symbol_result as usize)
     }
     
     #[must_use]
@@ -581,18 +551,7 @@ impl OrcEngine {
         &'ctx self,
         name: &str,
     ) -> Result<OrcFunction<'ctx, F>, OrcError> {
-        let mangled_symbol = self.mangle_symbol(name);
-        self.get_mangled_function(&mangled_symbol)
-    }
-    
-    #[must_use]
-    #[inline]
-    pub unsafe fn get_mangled_function_in<'ctx, F: UnsafeOrcFn>(
-        &'ctx self,
-        module: &str,
-        mangled_symbol: &MangledSymbol,
-    ) -> Result<OrcFunction<'ctx, F>, OrcError> {
-        let addr = self.get_mangled_symbol_address_in(module, mangled_symbol)?;
+        let addr = self.get_symbol_address(name)?;
         Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
     }
     
@@ -603,8 +562,8 @@ impl OrcEngine {
         module: &str,
         symbol: &str,
     ) -> Result<OrcFunction<'ctx, F>, OrcError> {
-        let mangled_symbol = self.mangle_symbol(symbol);
-        self.get_mangled_function_in(module, &mangled_symbol)
+        let addr = self.get_symbol_address_in(module, symbol)?;
+        Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
     }
     
     // NOTE: I'm pretty sure eager compilation is useless on Windows because I don't think that you can lookup symbols
