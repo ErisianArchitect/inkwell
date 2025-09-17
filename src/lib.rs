@@ -32,7 +32,12 @@ pub mod error;
 pub mod execution_engine;
 #[cfg(not(feature = "llvm8-0"))]
 pub mod intrinsics;
+#[cfg(any(
+    any(target_os = "linux", unix),
+    all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"),
+))]
 pub mod listener;
+pub(crate) mod lockfree_linked_list;
 pub mod memory_buffer;
 pub mod memory_manager;
 #[deny(missing_docs)]
