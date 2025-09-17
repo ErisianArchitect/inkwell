@@ -5,6 +5,7 @@ use llvm_sys::orc::LLVMOrcTargetAddress;
 use crate::orc::orc_jit_fn::UnsafeOrcFn;
 
 // TODOC (ErisianArchitect): struct FunctionAddress
+// NOTE: FunctionAddress must be repr(transparent) to ensure that it is interchangeable with LLVMOrcTargetAddress.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionAddress(pub(crate) LLVMOrcTargetAddress);
@@ -19,9 +20,9 @@ unsafe impl Sync for FunctionAddress {}
 impl FunctionAddress {
     pub const NULL: Self = Self(0);
     
-    // Either NULL or null can be removed, but having them both gives users options for when they prefer a function
-    // over a const. Everyone hates CAPS LOCK. Also, it means that you can provide `FunctionAddress::null` as input
-    // to something that expects a function that returns FunctionAddress.
+    // NOTE: Either NULL or fn null() can be removed, but having them both gives users options for when they prefer a
+    // function over a const. Everyone hates CAPS LOCK. Also, it means that you can provide `FunctionAddress::null` as
+    // input to something that expects a function that returns FunctionAddress.
     #[must_use]
     #[inline]
     pub const fn null() -> Self {
