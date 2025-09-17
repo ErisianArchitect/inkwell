@@ -406,13 +406,16 @@ impl OrcEngine {
     
     // Unfortunately there is no demangle function, so this is an irreversible operation.
     // There should be a way to demangle it, but that would be up to the user of the api.
-    /// Mangles name so that it can be used directly for lookups or insertions inside of this [OrcEngine].
+    /// Mangles symbol name for use in functions that require a [MangledSymbol].
+    /// The [MangledSymbol] that you use in the [OrcEngine] functions must have been created by the same [OrcEngine].
     #[must_use]
     #[inline]
     pub fn mangle_symbol(&self, name: &str) -> MangledSymbol {
         unsafe { mangle_symbol(self.inner.jit_stack, name) }
     }
     
+    // TODO (ErisianArchitect): You can get rid of the lifetime of the symbol table if you give it shared ownership of
+    //                          the OrcEngine.
     #[must_use]
     #[inline]
     pub fn create_symbol_table<'ctx>(&'ctx self) -> SymbolTable<'ctx> {
@@ -432,10 +435,13 @@ impl OrcEngine {
     }
     
     #[must_use]
-    pub fn create_mangled_indirect_stub<F: UnsafeOrcFn>(&self, mangled_symbol: MangledSymbol, function: F) -> Result<(), OrcError> {
-        let addr: usize = unsafe { transmute_copy(&function) };
+    pub fn create_mangled_indirect_stub(
+        &self,
+        mangled_symbol: MangledSymbol,
+        address: FunctionAddress,
+    ) -> Result<(), OrcError> {
         let err = unsafe {
-            LLVMOrcCreateIndirectStub(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as LLVMOrcTargetAddress)
+            LLVMOrcCreateIndirectStub(self.inner.jit_stack, mangled_symbol.as_ptr(), address.0)
         };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
@@ -446,16 +452,19 @@ impl OrcEngine {
     
     #[must_use]
     #[inline]
-    pub fn create_indirect_stub<F: UnsafeOrcFn>(&self, name: &str, function: F) -> Result<(), OrcError> {
+    pub fn create_indirect_stub(&self, name: &str, address: FunctionAddress) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
-        self.create_mangled_indirect_stub(mangled_symbol, function)
+        self.create_mangled_indirect_stub(mangled_symbol, address)
     }
     
     #[must_use]
-    pub fn set_mangled_indirect_stub<F: UnsafeOrcFn>(&self, mangled_symbol: &MangledSymbol, function: F) -> Result<(), OrcError> {
-        let addr: usize = unsafe { transmute_copy(&function) };
+    pub fn set_mangled_indirect_stub(
+        &self,
+        mangled_symbol: &MangledSymbol,
+        address: FunctionAddress,
+    ) -> Result<(), OrcError> {
         let err = unsafe {
-            LLVMOrcSetIndirectStubPointer(self.inner.jit_stack, mangled_symbol.as_ptr(), addr as LLVMOrcTargetAddress)
+            LLVMOrcSetIndirectStubPointer(self.inner.jit_stack, mangled_symbol.as_ptr(), address.0)
         };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
@@ -466,14 +475,19 @@ impl OrcEngine {
     
     #[must_use]
     #[inline]
-    pub fn set_indirect_stub<F: UnsafeOrcFn>(&self, name: &str, function: F) -> Result<(), OrcError> {
+    pub fn set_indirect_stub(&self, name: &str, address: FunctionAddress) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
-        self.set_mangled_indirect_stub(&mangled_symbol, function)
+        self.set_mangled_indirect_stub(&mangled_symbol, address)
     }
     
     #[must_use]
-    pub unsafe fn register_mangled_function_raw(&self, mangled_symbol: MangledSymbol, address: LLVMOrcTargetAddress) -> Result<(), OrcError> {
-        if let Some(found_addr) = self.inner.symbol_table.insert_mangled(mangled_symbol.clone(), address) {
+    #[inline]
+    pub fn register_mangled_function(
+        &self,
+        mangled_symbol: MangledSymbol,
+        address: FunctionAddress,
+    ) -> Result<(), OrcError> {
+        if let Some(found_addr) = self.inner.symbol_table.insert_mangled(mangled_symbol.clone(), address.0) {
             // insert back into the table
             self.inner.symbol_table.insert_mangled(mangled_symbol.clone(), found_addr);
             return Err(OrcError::MangledFunctionAlreadyRegistered(mangled_symbol));
@@ -483,22 +497,9 @@ impl OrcEngine {
     
     #[must_use]
     #[inline]
-    pub fn register_mangled_function(&self, mangled_symbol: MangledSymbol, address: FunctionAddress) -> Result<(), OrcError> {
-        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw()) }
-    }
-    
-    #[must_use]
-    #[inline]
-    pub unsafe fn register_function_raw(&self, name: &str, address: LLVMOrcTargetAddress) -> Result<(), OrcError> {
-        let mangled_symbol = self.mangle_symbol(name);
-        self.register_mangled_function_raw(mangled_symbol, address)
-    }
-    
-    #[must_use]
-    #[inline]
     pub fn register_function(&self, name: &str, address: FunctionAddress) -> Result<(), OrcError> {
         let mangled_symbol = self.mangle_symbol(name);
-        unsafe { self.register_mangled_function_raw(mangled_symbol, address.raw()) }
+        self.register_mangled_function(mangled_symbol, address)
     }
     
     #[must_use]
@@ -578,8 +579,8 @@ impl OrcEngine {
     /// 
     /// The module name must be unique (no other module added to this engine by that name).
     #[must_use]
-    pub fn add_module<'ctx>(
-        &'ctx self,
+    pub fn add_module(
+        &self,
         name: &str,
         module: Module<'_>,
         compilation_mode: CompilationMode,
@@ -617,9 +618,10 @@ impl OrcEngine {
             module.as_mut_ptr(),
             Some(orc_engine_symbol_resolver),
             // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
-            // this is used as the context for the module_symbol_resolver.
-            // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
-            (local_table.as_ptr() as *mut LocalSymbolTableInner).cast(),
+            // This is used as the context for the module_symbol_resolver.
+            // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will
+            // never be mutated.
+            local_table.as_ptr().cast_mut().cast(),
         ) };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
@@ -668,7 +670,7 @@ impl OrcEngine {
             // this is used as the context for the module_symbol_resolver.
             // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
             // The LocalSymbolTable is guaranteed to live as long as the module.
-            (local_table.as_ptr() as *mut LocalSymbolTableInner).cast(),
+            local_table.as_ptr().cast_mut().cast(),
         ) };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
@@ -726,16 +728,15 @@ impl OrcEngine {
     
     #[must_use]
     pub fn remove_module(&self, name: &str) -> Result<(), OrcError> {
-        if let Some(module) = self.inner.modules.write().unwrap().remove(name) {
-            let err = unsafe { LLVMOrcRemoveModule(self.inner.jit_stack, module.handle) };
-            if !err.is_null() {
-                let err_string = unsafe { LLVMErrorString::new(err) };
-                return Err(OrcError::RemoveModuleFailure(err_string));
-            }
-            Ok(())
-        } else {
-            Err(OrcError::ModuleNotFound(name.into()))
+        let Some(module) = self.inner.modules.write().unwrap().remove(name) else {
+            return Err(OrcError::ModuleNotFound(name.into()));
+        };
+        let err = unsafe { LLVMOrcRemoveModule(self.inner.jit_stack, module.handle) };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            return Err(OrcError::RemoveModuleFailure(err_string));
         }
+        Ok(())
     }
     
     #[must_use]
@@ -749,7 +750,7 @@ impl OrcEngine {
         let lazy_compiler = LazyCompileCallback::new(self, compiler);
         let node = LockfreeLinkedListNode::new(lazy_compiler);
         // Add the callback node to the callbacks linked list to keep it alive while the OrcEngine is alive.
-        unsafe { self.inner.lazy_compile_callbacks.push_raw(&node.next, &*node); }
+        unsafe { self.inner.lazy_compile_callbacks.push(&node.next, &*node); }
         let mut ret_addr = 0;
         let err = unsafe {
             LLVMOrcCreateLazyCompileCallback(
