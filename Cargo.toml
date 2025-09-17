@@ -138,6 +138,8 @@ target-all = [
 ]
 experimental = ["static-alloc"]
 nightly = ["inkwell_internals/nightly"]
+# Enable the Intel VTune profile: https://en.wikipedia.org/wiki/VTune
+vtune = []
 
 [dependencies]
 inkwell_internals = { path = "./internal_macros", version = "0.11.0" }
