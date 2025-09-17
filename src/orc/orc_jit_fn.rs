@@ -60,8 +60,10 @@ impl_unsafe_fn!(
 );
 
 #[macro_export]
-macro_rules! orc_jit_fn_ty {
+macro_rules! orc_fn {
     (fn($($param:ty),*$(,)?)$( -> $result:ty)?) => {
         $crate::orc::orc_jit_fn::OrcFunction::<unsafe extern "C" fn($($param),*) $( -> $result )?>
     };
 }
+
+pub use crate::orc_fn;
