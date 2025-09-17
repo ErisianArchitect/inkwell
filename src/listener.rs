@@ -4,8 +4,7 @@ use llvm_sys::prelude::LLVMJITEventListenerRef;
 
 #[cfg(any(target_os = "linux", unix))]
 use llvm_sys::execution_engine::LLVMCreateGDBRegistrationListener;
-// TODO (ErisianArchitect): Add vtune feature flag, and conditionally compile for vtune.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
 use llvm_sys::execution_engine::LLVMCreateIntelJITEventListener;
 #[cfg(target_os = "linux")]
 use llvm_sys::execution_engine::{
@@ -28,8 +27,7 @@ thread_local! {
             }
         }
     );
-    // TODO (ErisianArchitect): Add vtune feature flag, and conditionally compile for vtune.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
     static INTEL_LISTENER: LazyLock<JitEventListener> = LazyLock::new(
         || {
             JitEventListener {
@@ -74,8 +72,7 @@ impl JitEventListener {
 
     /// Creates an Intel JIT Event Listener for the Intel VTune Amplifier.
     /// This should only be used on intel CPUs.
-    // TODO (ErisianArchitect): Add vtune feature flag, and conditionally compile for vtune.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
     #[must_use]
     #[inline]
     pub fn intel() -> Self {
