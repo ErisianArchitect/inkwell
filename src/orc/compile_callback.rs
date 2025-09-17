@@ -14,14 +14,14 @@ use crate::orc::{
 pub(crate) type WeakOrcEngine = std::sync::Weak<OrcEngineInner>;
 
 pub(crate) type LLVMOrcLazyCompileCallbackFn
-    = Option<extern "C" fn(jit_stack: LLVMOrcJITStackRef, context: *mut c_void) -> LLVMOrcTargetAddress>;
+    = Option<extern "C" fn(jit_stack: LLVMOrcJITStackRef, context: *const LazyCompileCallback) -> FunctionAddress>;
 
 extern "C" {
     pub(crate) fn LLVMOrcCreateLazyCompileCallback(
         jit_stack: LLVMOrcJITStackRef,
         return_address: *mut LLVMOrcTargetAddress,
         callback: LLVMOrcLazyCompileCallbackFn,
-        context: *mut c_void,
+        context: *const LazyCompileCallback,
     ) -> LLVMErrorRef;
 }
 
