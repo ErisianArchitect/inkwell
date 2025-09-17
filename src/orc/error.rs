@@ -50,8 +50,6 @@ pub enum OrcError {
     SetIndirectStubFailure(LLVMErrorString),
     #[error("Symbol Table not owned by Orc Engine.")]
     NotOwnedByOrcEngine,
-    #[error("Mangled Function was not found: {0:?}")]
-    MangledSymbolNotFound(MangledSymbol),
     #[error("LLVM Error: {0}")]
     LLVMError(#[from] LLVMErrorString),
     #[error("LLVM: {0}")]
