@@ -22,6 +22,8 @@ pub enum OrcError {
     CreateTargetMachineFailure,
     #[error("Failed to create indirect stub: {0}")]
     CreateIndirectStubFailure(LLVMErrorString),
+    #[error("Failed to create lazy compile callback: {0}")]
+    CreateLazyCompileCallbackFailure(LLVMErrorString),
     #[error("Failed to create eagerly compiled IR module: {0}")]
     AddEagerlyCompiledIRFailure(LLVMErrorString),
     #[error("Failed to create lazily compiled IR module: {0}")]
