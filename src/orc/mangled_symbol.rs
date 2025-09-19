@@ -24,7 +24,7 @@ pub(crate) struct MangledSymbolInner {
 // TODOC (ErisianArchitect): struct MangledSymbol
 #[derive(Clone)]
 pub struct MangledSymbol {
-    symbol: Arc<MangledSymbolInner>,
+    pub(crate) symbol: Arc<MangledSymbolInner>,
 }
 
 // TODOC (ErisianArchitect): impl MangledSymbol
