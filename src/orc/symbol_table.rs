@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData, mem::transmute_copy, os::ra
 use libc::c_char;
 use llvm_sys::orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress};
 
-use crate::{orc::{mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcFn}};
+use crate::orc::{function_address::FunctionAddress, mangled_symbol::{mangle_symbol, MangledSymbol}, orc_jit_fn::UnsafeOrcFn};
 
 // TODO (ErisianArchitect): Create IntoSymbolTable trait and implement for some types.
 //                          IntoSymbolTable should be used to create a HashMap<MangledSymbol, u64>.
@@ -116,15 +116,14 @@ impl<'jit> SymbolTable<'jit> {
     }
     
     #[inline]
-    pub fn register_mangled<F: UnsafeOrcFn>(&mut self, mangled_symbol: MangledSymbol, function: F) -> Option<LLVMOrcTargetAddress> {
-        let addr: usize = unsafe { transmute_copy(&function) };
-        self.symbols.insert(mangled_symbol, addr as LLVMOrcTargetAddress)
+    pub fn register_mangled(&mut self, mangled_symbol: MangledSymbol, address: FunctionAddress) -> Option<LLVMOrcTargetAddress> {
+        self.symbols.insert(mangled_symbol, address.0)
     }
     
     #[inline]
-    pub fn register<F: UnsafeOrcFn>(&mut self, name: &str, function: F) -> Option<LLVMOrcTargetAddress> {
+    pub fn register(&mut self, name: &str, address: FunctionAddress) -> Option<LLVMOrcTargetAddress> {
         let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
-        self.register_mangled(mangled_symbol, function)
+        self.register_mangled(mangled_symbol, address)
     }
     
     #[must_use]
