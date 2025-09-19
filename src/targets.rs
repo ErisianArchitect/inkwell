@@ -1060,6 +1060,17 @@ impl TargetMachine {
 
         TargetMachine { target_machine }
     }
+    
+    // This function is necessary for the Orc V1 engine (see OrcEngine::with_target_machine).
+    // It is meant to ensure that the inner LLVMTargetMachineRef is safely taken out of the TargetMachine so that it is
+    // not double dropped, since Orc V1's JIT Stack takes ownership of the target machine. -ErisianArchitect
+    /// Takes ownership of the raw [LLVMTargetMachineRef] contained inside this [TargetMachine] and then
+    /// forgets the [TargetMachine] with [std::mem::ManuallyDrop] in order to prevent double-disposal.
+    pub(crate) fn take_ownership(self) -> LLVMTargetMachineRef {
+        // TODO: TargetMachine::take_ownership. If TargetMachine is ever updated to include additional fields, make
+        //       sure that it is safely forgotten.
+        std::mem::ManuallyDrop::new(self).target_machine
+    }
 
     /// Acquires the underlying raw pointer belonging to this `TargetMachine` type.
     pub fn as_mut_ptr(&self) -> LLVMTargetMachineRef {
