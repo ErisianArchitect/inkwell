@@ -56,4 +56,6 @@ pub enum OrcError {
     LLVMString(#[from] LLVMString),
     #[error("NulError: {0}")]
     NulError(#[from] NulError),
+    #[error("JIT is not supported for the given target.")]
+    JITNotSupported,
 }

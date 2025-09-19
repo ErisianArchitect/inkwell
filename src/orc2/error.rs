@@ -1,5 +1,5 @@
 
-#[derive(Debug, thiserror::Error)]
-pub enum OrcError {
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum Orc2Error {
     
 }

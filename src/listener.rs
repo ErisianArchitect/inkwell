@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use llvm_sys::prelude::LLVMJITEventListenerRef;
 
-#[cfg(any(target_os = "linux", unix))]
+#[cfg(target_family = "unix")]
 use llvm_sys::execution_engine::LLVMCreateGDBRegistrationListener;
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
 use llvm_sys::execution_engine::LLVMCreateIntelJITEventListener;
@@ -19,7 +19,7 @@ pub struct JitEventListener {
 }
 
 thread_local! {
-    #[cfg(any(target_os = "linux", unix))]
+    #[cfg(target_family = "unix")]
     static GDB_LISTENER: LazyLock<JitEventListener> = LazyLock::new(
         || {
             JitEventListener {
@@ -63,7 +63,7 @@ impl JitEventListener {
     }
     
     /// Creates a GDB Registration Listener
-    #[cfg(any(target_os = "linux", unix))]
+    #[cfg(target_family = "unix")]
     #[must_use]
     #[inline]
     pub fn gdb() -> Self {
