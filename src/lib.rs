@@ -53,6 +53,9 @@ pub mod object_file;
 ))]
 pub mod orc;
 #[cfg(any(
+    // Imagine my surprise when, after mostly finishing the Orc API, I realized that the Orc2 api was available for
+    // LLVM v11. 
+    feature = "llvm11-0",
     feature = "llvm12-0",
     feature = "llvm13-0",
     feature = "llvm14-0",
@@ -63,7 +66,7 @@ pub mod orc;
     feature = "llvm19-1",
     feature = "llvm20-1",
 ))]
-pub mod orc;
+pub mod orc2;
 pub mod passes;
 pub mod targets;
 pub mod types;
