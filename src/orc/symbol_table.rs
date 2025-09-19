@@ -16,6 +16,7 @@ pub(crate) struct GlobalSymbolTableInner {
 }
 
 // TODOC (ErisianArchitect): struct GlobalSymbolTable
+#[repr(transparent)]
 #[derive(Debug, Clone)]
 pub(crate) struct GlobalSymbolTable {
     pub(crate) inner: Arc<GlobalSymbolTableInner>,
@@ -51,7 +52,7 @@ impl GlobalSymbolTable {
 
 #[derive(Debug)]
 pub(crate) struct LocalSymbolTableInner {
-    global_table: GlobalSymbolTable,
+    global_table: Option<GlobalSymbolTable>,
     local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>,
 }
 
@@ -61,7 +62,7 @@ impl<'ctx> LocalSymbolTableInner {
     pub(crate) fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<LLVMOrcTargetAddress> {
         self.local_table
             .get(mangled_symbol).cloned()
-            .or_else(move || self.global_table.get_symbol(mangled_symbol))
+            .or_else(move || self.global_table.as_ref()?.get_symbol(mangled_symbol))
     }
 }
 
@@ -77,7 +78,7 @@ pub(crate) struct LocalSymbolTable {
 impl LocalSymbolTable {
     
     #[must_use]
-    pub(crate) fn new(global_table: GlobalSymbolTable, local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>) -> Self {
+    pub(crate) fn new(global_table: Option<GlobalSymbolTable>, local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>) -> Self {
         Self {
             inner: Arc::new(LocalSymbolTableInner {
                 global_table,
@@ -95,15 +96,15 @@ impl LocalSymbolTable {
 
 // TODOC (ErisianArchitect): struct SymbolTable
 #[derive(Debug)]
-pub struct SymbolTable<'ctx> {
+pub struct SymbolTable<'jit> {
     // It's safe for SymbolTable to have the JITStackRef because it is tied to the lifetime of the OrcEngine.
     pub(crate) jit_stack: LLVMOrcJITStackRef,
     pub(crate) symbols: HashMap<MangledSymbol, LLVMOrcTargetAddress>,
-    _lifetime: PhantomData<&'ctx ()>,
+    _lifetime: PhantomData<&'jit ()>,
 }
 
 // TODOC (ErisianArchitect): impl SymbolTable
-impl<'ctx> SymbolTable<'ctx> {
+impl<'jit> SymbolTable<'jit> {
     #[must_use]
     #[inline]
     pub(crate) fn new(jit_stack: LLVMOrcJITStackRef) -> Self {
@@ -155,8 +156,18 @@ pub(crate) extern "C" fn orc_engine_symbol_resolver(mangled_cstr: *const c_char,
         return 0;
     }
     let locals = unsafe { sym_table_ptr.as_ref() }.unwrap();
-    // must be ManuallyDrop since the mangled string is managed by LLVM.
-    let mangled_symbol = std::mem::ManuallyDrop::new(unsafe { MangledSymbol::from_mangled_cstr(mangled_cstr as _) });
+    // Create a temporary MangledSymbol value based on the provided cstr. This MangledSymbol will be prevented from
+    // dropping after the symbol is looked up.
+    let temp_mangled_symbol = unsafe { MangledSymbol::from_mangled_cstr(mangled_cstr as _) };
     // returning 0 means the symbol was not found.
-    locals.get_symbol(&mangled_symbol).unwrap_or(0)
+    let result = locals.get_symbol(&temp_mangled_symbol).unwrap_or(0);
+    // destructure the MangledSymbol and Arc in order to forget about the inner value so that it is not double-freed.
+    // the symbol resolution system owns the mangled string.
+    let MangledSymbol { symbol } = temp_mangled_symbol;
+    if let Some(inner) = Arc::into_inner(symbol) {
+        std::mem::forget(inner);
+    } else {
+        eprintln!("Error: Somehow MangledSymbol was not exclusive during symbol resolution.");
+    }
+    result
 }
