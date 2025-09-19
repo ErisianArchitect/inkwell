@@ -2,8 +2,9 @@
 /*
 TODO (ErisianArchitect):
 [ ] Full Orc API support
+[ ] Cleanup Code
 [ ] Code Review
-[ ] Formatting (including removing excess whitespace)
+[ ] Formatting (including removing excess whitespace) (Don't forget lockfree_linked_list.rs)
 [ ] Clarification comments
 [ ] Documentation
 [ ] Remove this todo list when all tasks are complete.
@@ -24,7 +25,7 @@ pub mod orc_jit_fn;
 pub mod symbol_table;
 
 use std::{
-    collections::HashMap, mem::transmute_copy, path::Path, sync::{Arc, RwLock, RwLockWriteGuard}
+    collections::HashMap, path::Path, sync::{Arc, RwLock, RwLockWriteGuard}
 };
 
 use llvm_sys::orc::{
@@ -40,7 +41,6 @@ use llvm_sys::orc::{
     LLVMOrcSetIndirectStubPointer,
     LLVMOrcJITStackRef,
     LLVMOrcModuleHandle,
-    LLVMOrcTargetAddress,
 };
 
 // TODO: Update this cfg if any listeners are added that have different requirements.
@@ -68,7 +68,7 @@ use crate::{
         mangled_symbol::{mangle_symbol, MangledSymbol},
         orc_jit_fn::{OrcFunction, UnsafeOrcFn},
         symbol_table::{
-            orc_engine_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, LocalSymbolTableInner, SymbolTable
+            orc_engine_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, SymbolTable
         },
     },
     support::{to_c_str, LLVMString},
@@ -277,7 +277,7 @@ orc_engine_event_listener_flags_impl!(
 pub(crate) struct OrcModule {
     pub(crate) handle: LLVMOrcModuleHandle,
     // This just needs to live as long as the OrcModule exists.
-    /// Used for per-module symbol resolution with global symbol table fallback.
+    /// Used for per-module symbol resolution with optional global symbol table fallback.
     pub(crate) _symbol_table: LocalSymbolTable,
 }
 
@@ -292,8 +292,19 @@ impl OrcModule {
 
 #[derive(Debug)]
 pub(crate) struct OrcEngineInner {
+    // The JITStack is like the Execution Engine of the Orc V1 API.
     pub(crate) jit_stack: LLVMOrcJITStackRef,
+    // The global fallback symbol table that functions can be registered to.
+    // If a module uses the global symbol table as a fallback, then it will search
+    // the global table after searching the local resolutions.
+    // Having a per-module global symbol table fallback is likely not desireable, as it would complicate symbol
+    // resolution.
+    // Symbols are resolved in LIFO order, where the last module that you added is searched first, then the previous
+    // module. At each search stage, it will perform local resolution first for external symbols define in the module.
+    // Next, it will search the fallback symbol resolver provided for the module. After it has searched the external
+    // and local symbols, it will search the next module.
     pub(crate) symbol_table: GlobalSymbolTable,
+    // The modules are
     pub(crate) modules: RwLock<HashMap<Box<str>, OrcModule>>,
     pub(crate) lazy_compile_callbacks: LockfreeLinkedList<LazyCompileCallback>,
     // TODO: Update this cfg if any listeners are added that have different requirements.
@@ -585,6 +596,7 @@ impl OrcEngine {
         module: Module<'_>,
         compilation_mode: CompilationMode,
         local_symbol_table: Option<SymbolTable<'_>>,
+        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         let symbol_table = if let Some(symbol_table) = local_symbol_table {
             if symbol_table.jit_stack != self.inner.jit_stack {
@@ -606,7 +618,12 @@ impl OrcEngine {
         }
         let module = std::mem::ManuallyDrop::new(module);
         // Be free, data_layout!
-        let local_table = LocalSymbolTable::new(self.inner.symbol_table.clone(), symbol_table);
+        let fallback = if global_symbol_table_fallback {
+            Some(self.inner.symbol_table.clone())
+        } else {
+            None
+        };
+        let local_table = LocalSymbolTable::new(fallback, symbol_table);
         let add_compiled_ir_fn = match compilation_mode {
             CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
             CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
@@ -647,6 +664,7 @@ impl OrcEngine {
         // If `modules.contains_key` has already been determined to be true, this will be false.
         // If this is true, that means the check hasn't been performed, and it must be performed.
         check_modules_contains: bool,
+        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         let symbol_table = if let Some(symbol_table) = local_symbol_table {
             if symbol_table.jit_stack != self.inner.jit_stack {
@@ -659,7 +677,12 @@ impl OrcEngine {
         if check_modules_contains && modules.contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
-        let local_table = LocalSymbolTable::new(self.inner.symbol_table.clone(), symbol_table);
+        let fallback = if global_symbol_table_fallback {
+            Some(self.inner.symbol_table.clone())
+        } else {
+            None
+        };
+        let local_table = LocalSymbolTable::new(fallback, symbol_table);
         let mut handle = 0u64;
         let err = unsafe { LLVMOrcAddObjectFile(
             self.inner.jit_stack,
@@ -689,6 +712,7 @@ impl OrcEngine {
         name: &str,
         memory_buffer: &MemoryBuffer,
         local_symbol_table: Option<SymbolTable>,
+        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         self.internal_add_object_from_memory(
             name,
@@ -696,6 +720,7 @@ impl OrcEngine {
             local_symbol_table,
             self.inner.modules.write().unwrap(),
             true,
+            global_symbol_table_fallback,
         )
     }
     
@@ -707,6 +732,7 @@ impl OrcEngine {
         name: &str,
         object_file_path: P,
         local_symbol_table: Option<SymbolTable>,
+        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         // this is going to be repeated in `add_object_from_memory`, but it is preferable to do this check before
         // creating the memory buffer. It won't matter that it's done a second time.
@@ -723,6 +749,7 @@ impl OrcEngine {
             local_symbol_table,
             modules,
             false,
+            global_symbol_table_fallback,
         )
     }
     
