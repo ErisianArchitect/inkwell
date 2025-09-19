@@ -9,7 +9,7 @@ use crate::support::to_c_str;
 #[inline]
 pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) -> MangledSymbol {
     let name_c_str = to_c_str(name);
-    let mut symbol: *mut i8 = std::ptr::null_mut();
+    let mut symbol = std::ptr::null_mut::<i8>();
     LLVMOrcGetMangledSymbol(jit_stack, &mut symbol, name_c_str.as_ptr());
     MangledSymbol::from_mangled_cstr(symbol)
 }
@@ -51,7 +51,7 @@ impl MangledSymbol {
     #[inline]
     pub fn to_str(&self) -> &str {
         // SAFETY: symbol is valid UTF-8 string, and the len has already been calculated in `MangledSymbol::new`.
-        let byte_slice = unsafe { std::slice::from_raw_parts(self.symbol.c_str as *const u8, self.symbol.len) };
+        let byte_slice = unsafe { std::slice::from_raw_parts(self.symbol.c_str.cast::<u8>(), self.symbol.len) };
         unsafe { str::from_utf8_unchecked(byte_slice) }
     }
     
@@ -60,7 +60,7 @@ impl MangledSymbol {
     pub fn to_cstr(&self) -> &CStr {
         // add 1 for the null byte at the end.
         let len = self.symbol.len + 1;
-        let bytes = unsafe { std::slice::from_raw_parts(self.symbol.c_str as *mut u8, len) };
+        let bytes = unsafe { std::slice::from_raw_parts(self.symbol.c_str.cast::<u8>(), len) };
         unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
     }
     
