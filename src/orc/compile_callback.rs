@@ -79,9 +79,9 @@ impl ModuleBuilder {
     }
 }
 
-// pub trait LazyModuleBuilder {
-//     fn build(self, engine: OrcEngine, compiler: ModuleBuilder);
-// }
+pub trait LazyModuleBuilder {
+    fn build(self: Box<Self>, engine: OrcEngine, compiler: ModuleBuilder);
+}
 
 // pub struct LazyModuleBuilder {
     
