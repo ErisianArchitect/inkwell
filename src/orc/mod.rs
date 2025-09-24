@@ -25,22 +25,11 @@ pub mod orc_jit_fn;
 pub mod symbol_table;
 
 use std::{
-    collections::HashMap, path::Path, sync::{Arc, RwLock, RwLockWriteGuard}
+    collections::HashMap, ffi::{c_char, c_void}, path::Path, sync::{Arc, RwLock, RwLockWriteGuard}
 };
 
 use llvm_sys::orc::{
-    LLVMOrcAddEagerlyCompiledIR,
-    LLVMOrcAddLazilyCompiledIR,
-    LLVMOrcAddObjectFile,
-    LLVMOrcCreateIndirectStub,
-    LLVMOrcCreateInstance,
-    LLVMOrcDisposeInstance,
-    LLVMOrcGetSymbolAddress,
-    LLVMOrcGetSymbolAddressIn,
-    LLVMOrcRemoveModule,
-    LLVMOrcSetIndirectStubPointer,
-    LLVMOrcJITStackRef,
-    LLVMOrcModuleHandle,
+    LLVMOrcAddEagerlyCompiledIR, LLVMOrcAddLazilyCompiledIR, LLVMOrcAddObjectFile, LLVMOrcCreateIndirectStub, LLVMOrcCreateInstance, LLVMOrcDisposeInstance, LLVMOrcGetSymbolAddress, LLVMOrcGetSymbolAddressIn, LLVMOrcJITStackRef, LLVMOrcModuleHandle, LLVMOrcRemoveModule, LLVMOrcSetIndirectStubPointer, LLVMOrcSymbolResolverFn, LLVMOrcTargetAddress
 };
 
 // TODO: Update this cfg if any listeners are added that have different requirements.
@@ -68,7 +57,7 @@ use crate::{
         mangled_symbol::{mangle_symbol, MangledSymbol},
         orc_jit_fn::{OrcFunction, UnsafeOrcFn},
         symbol_table::{
-            orc_engine_symbol_resolver, GlobalSymbolTable, LocalSymbolTable, SymbolTable
+            orc_engine_global_symbol_resolver, orc_engine_local_symbol_resolver, GlobalSymbolTable, GlobalSymbolTableInner, LocalSymbolTable, SymbolTable
         },
     },
     support::{to_c_str, LLVMString},
@@ -95,6 +84,43 @@ pub enum CompilationMode {
     Eager,
     /// Compile on demand. Functions will not be compiled until their first resolution.
     Lazy,
+}
+
+pub(crate) type SymbolResolverFn = extern "C" fn(mangled: *const c_char, context: *mut c_void) -> LLVMOrcTargetAddress;
+
+pub(crate) enum SymbolResolver {
+    None,
+    Global,
+    Local(LocalSymbolTable),
+    Custom(SymbolResolverFn, *const c_void),
+}
+
+impl SymbolResolver {
+    pub fn into_tuple(
+        self,
+        // If the SymbolResolver is `Global`, this pointer will become the context that is returned. Otherwise, it is
+        // ignored.
+        global_table_ptr: *const GlobalSymbolTableInner
+    ) -> (Option<SymbolResolverFn>, *mut c_void, Option<LocalSymbolTable>) {
+        match self {
+            SymbolResolver::None => (None, std::ptr::null_mut(), None),
+            SymbolResolver::Global => (
+                Some(orc_engine_global_symbol_resolver),
+                global_table_ptr.cast_mut().cast(),
+                None,
+            ),
+            SymbolResolver::Local(table) => (
+                Some(orc_engine_local_symbol_resolver),
+                unsafe { table.as_ptr().cast_mut().cast() },
+                Some(table),
+            ),
+            SymbolResolver::Custom(func, ctx) => (
+                Some(func),
+                ctx.cast_mut().cast(),
+                None,
+            ),
+        }
+    }
 }
 
 // TODO: Update this cfg if any listeners are added that have different requirements.
@@ -413,15 +439,15 @@ pub(crate) struct OrcModule {
     // This just needs to live as long as the OrcModule.
     // TODO (ErisianArchitect): Update this documentation when you update the symbol resolution api.
     /// Used for per-module symbol resolution with optional global symbol table fallback.
-    pub(crate) _symbol_table: LocalSymbolTable,
+    pub(crate) _symbol_table: Option<LocalSymbolTable>,
 }
 
 impl OrcModule {
     /// Create a new [OrcModule] from the given [LLVMOrcModuleHandle] with the given [LocalSymbolTable].
-    pub(crate) fn new(handle: LLVMOrcModuleHandle, symbol_table: LocalSymbolTable) -> Self {
+    pub(crate) fn new(handle: LLVMOrcModuleHandle, symbol_table: Option<LocalSymbolTable>) -> Self {
         Self {
             handle,
-            _symbol_table: unsafe { std::mem::transmute(symbol_table) },
+            _symbol_table: symbol_table,
         }
     }
 }
@@ -775,6 +801,52 @@ impl OrcEngine {
         Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
     }
     
+    pub(crate) fn internal_add_module(
+        &self,
+        name: &str,
+        module: Module<'_>,
+        compilation_mode: CompilationMode,
+        resolver: SymbolResolver,
+    ) -> Result<(), OrcError> {
+        let mut modules = self.inner.modules.write().unwrap();
+        // Return an error if the name has already been registered. You can't have two modules with the same name, and you
+        // can't overwrite modules. It's improper.
+        if modules.contains_key(name) {
+            return Err(OrcError::RepeatModuleName(name.into()));
+        }
+        // LLVMOrcAddCompiledIR takes ownership of the module, so it must be prevented from being dropped and
+        // disposed. if module is owned by execution engine, that is considered an error.
+        // https://groups.google.com/g/llvm-dev/c/JAFXZKuixyE?pli=1
+        if module.owned_by_ee.borrow().is_some() {
+            return Err(OrcError::ModuleOwnedByExecutionEngine);
+        }
+        let module = std::mem::ManuallyDrop::new(module);
+        // Be free, data_layout!
+        module.data_layout.borrow_mut().take();
+        let (resolver, resolver_context, local_table) = resolver.into_tuple(self.inner.symbol_table.as_ptr());
+        let add_compiled_ir_fn = match compilation_mode {
+            CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
+            CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
+        };
+        let mut handle = 0 as LLVMOrcModuleHandle;
+        let err = unsafe { add_compiled_ir_fn(
+            self.inner.jit_stack,
+            &mut handle,
+            module.as_mut_ptr(),
+            resolver,
+            resolver_context,
+        ) };
+        if !err.is_null() {
+            let err_string = unsafe { LLVMErrorString::new(err) };
+            return Err(match compilation_mode {
+                CompilationMode::Eager => OrcError::AddEagerlyCompiledIRFailure(err_string),
+                CompilationMode::Lazy => OrcError::AddLazilyCompiledIRFailure(err_string),
+            });
+        }
+        modules.insert(name.into(), OrcModule::new(handle, local_table));
+        Ok(())
+    }
+    
     // TODO (ErisianArchitect): I'm not entirely sure about the symbol resolution behavior, so I want to update this
     //                          documentation after doing some experiments to figure out the order.
     // NOTE: I'm pretty sure eager compilation is useless on Windows because I don't think that you can lookup symbols
@@ -794,65 +866,17 @@ impl OrcEngine {
         module: Module<'_>,
         compilation_mode: CompilationMode,
         local_symbol_table: Option<SymbolTable<'_>>,
-        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
-        // TODO (ErisianArchitect): It would be better if a LocalSymbolTable were not created in the case where the
-        //                          user does not provide a local symbol table. In this case, there would be no local
-        //                          symbol resolution.
-        let symbol_table = if let Some(symbol_table) = local_symbol_table {
-            if symbol_table.jit_stack != self.inner.jit_stack {
-                return Err(OrcError::NotOwnedByOrcEngine);
+        self.internal_add_module(
+            name,
+            module,
+            compilation_mode,
+            if let Some(locals) = local_symbol_table {
+                SymbolResolver::Local(LocalSymbolTable::new(locals.take_inner()))
+            } else {
+                SymbolResolver::None
             }
-            symbol_table.take_inner()
-        } else {
-            HashMap::new()
-        };
-        let mut modules = self.inner.modules.write().unwrap();
-        // Return an error if the name has already been registered. You can't have two modules with the same name, and you
-        // can't overwrite modules. It's improper.
-        if modules.contains_key(name) {
-            return Err(OrcError::RepeatModuleName(name.into()));
-        }
-        // LLVMOrcAddCompiledIR takes ownership of the module, so it must be prevented from being dropped and
-        // disposed. if module is owned by execution engine, that is considered an error.
-        // https://groups.google.com/g/llvm-dev/c/JAFXZKuixyE?pli=1
-        if module.owned_by_ee.borrow().is_some() {
-            return Err(OrcError::ModuleOwnedByExecutionEngine);
-        }
-        let module = std::mem::ManuallyDrop::new(module);
-        // Be free, data_layout!
-        module.data_layout.borrow_mut().take();
-        let fallback = if global_symbol_table_fallback {
-            Some(self.inner.symbol_table.clone())
-        } else {
-            None
-        };
-        let local_table = LocalSymbolTable::new(fallback, symbol_table);
-        let add_compiled_ir_fn = match compilation_mode {
-            CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
-            CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
-        };
-        let mut handle = 0 as LLVMOrcModuleHandle;
-        let err = unsafe { add_compiled_ir_fn(
-            self.inner.jit_stack,
-            &mut handle,
-            module.as_mut_ptr(),
-            Some(orc_engine_symbol_resolver),
-            // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
-            // This is used as the context for the module_symbol_resolver.
-            // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will
-            // never be mutated.
-            local_table.as_ptr().cast_mut().cast(),
-        ) };
-        if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::new(err) };
-            return Err(match compilation_mode {
-                CompilationMode::Eager => OrcError::AddEagerlyCompiledIRFailure(err_string),
-                CompilationMode::Lazy => OrcError::AddLazilyCompiledIRFailure(err_string),
-            });
-        }
-        modules.insert(name.into(), OrcModule::new(handle, local_table));
-        Ok(())
+        )
     }
     
     // NOTE: I'm pretty sure this is useless on Windows because I don't think that you can lookup symbols from objects
@@ -869,7 +893,6 @@ impl OrcEngine {
         // If `modules.contains_key` has already been determined to be true, this will be false.
         // If this is true, that means the check hasn't been performed, and it must be performed.
         check_modules_contains: bool,
-        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         // TODO (ErisianArchitect): It would be better if a LocalSymbolTable were not created in the case where the
         //                          user does not provide a local symbol table. In this case, there would be no local
@@ -885,18 +908,13 @@ impl OrcEngine {
         if check_modules_contains && modules.contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
-        let fallback = if global_symbol_table_fallback {
-            Some(self.inner.symbol_table.clone())
-        } else {
-            None
-        };
-        let local_table = LocalSymbolTable::new(fallback, symbol_table);
+        let local_table = LocalSymbolTable::new(symbol_table);
         let mut handle = 0u64;
         let err = unsafe { LLVMOrcAddObjectFile(
             self.inner.jit_stack,
             &mut handle,
             memory_buffer.as_mut_ptr(),
-            Some(orc_engine_symbol_resolver),
+            Some(orc_engine_local_symbol_resolver),
             // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
             // this is used as the context for the module_symbol_resolver.
             // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
@@ -907,7 +925,7 @@ impl OrcEngine {
             let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(OrcError::AddObjectFileFailure(err_string))
         }
-        modules.insert(name.into(), OrcModule::new(handle, local_table));
+        modules.insert(name.into(), OrcModule::new(handle, Some(local_table)));
         Ok(())
     }
     
@@ -921,7 +939,6 @@ impl OrcEngine {
         name: &str,
         memory_buffer: &MemoryBuffer,
         local_symbol_table: Option<SymbolTable>,
-        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         self.internal_add_object_from_memory(
             name,
@@ -930,7 +947,6 @@ impl OrcEngine {
             self.inner.modules.write().unwrap(),
             // Check that the module hasn't already been registered.
             true,
-            global_symbol_table_fallback,
         )
     }
     
@@ -943,7 +959,6 @@ impl OrcEngine {
         name: &str,
         object_file_path: P,
         local_symbol_table: Option<SymbolTable>,
-        global_symbol_table_fallback: bool,
     ) -> Result<(), OrcError> {
         let modules = self.inner.modules.write().unwrap();
         // Return an error if the name has already been registered. You can't have two modules with the same name, and you
@@ -959,7 +974,6 @@ impl OrcEngine {
             modules,
             // Don't check that the module has already been registered because that check has already been performed.
             false,
-            global_symbol_table_fallback,
         )
     }
     
