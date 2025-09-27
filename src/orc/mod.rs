@@ -88,37 +88,85 @@ pub enum CompilationMode {
 
 pub(crate) type SymbolResolverFn = extern "C" fn(mangled: *const c_char, context: *mut c_void) -> LLVMOrcTargetAddress;
 
-pub(crate) enum SymbolResolver {
+#[derive(Debug)]
+pub(crate) enum InternalSymbolResolver {
     None,
     Global,
     Local(LocalSymbolTable),
-    Custom(SymbolResolverFn, *const c_void),
+}
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct SymbolResolver {
+    inner: InternalSymbolResolver,
 }
 
 impl SymbolResolver {
-    pub fn into_tuple(
+    #[must_use]
+    #[inline]
+    pub(crate) const fn new(inner: InternalSymbolResolver) -> Self {
+        Self { inner }
+    }
+    
+    // TODO (ErisianArchitect): This should be used to create a global symbol table fallback.
+    #[must_use]
+    #[inline]
+    pub(crate) const fn global() -> Self {
+        Self::new(InternalSymbolResolver::Global)
+    }
+    
+    #[must_use]
+    #[inline]
+    pub const fn none() -> Self {
+        Self::new(InternalSymbolResolver::None)
+    }
+    
+    #[must_use]
+    #[inline]
+    pub fn local(table: SymbolTable<'_>) -> Self {
+        Self::new(
+            InternalSymbolResolver::Local(LocalSymbolTable::new(table.take_inner()))
+        )
+    }
+    
+    #[must_use]
+    #[inline]
+    pub(crate) fn into_inner(self) -> InternalSymbolResolver {
+        self.inner
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SymbolResolverSettings {
+    resolver_fn: Option<SymbolResolverFn>,
+    context: *mut c_void,
+    locals: Option<LocalSymbolTable>,
+}
+
+impl InternalSymbolResolver {
+    // This part of the API is a little wonky, I'll admit that, but it has the desired outcome.
+    pub fn into_settings(
         self,
         // If the SymbolResolver is `Global`, this pointer will become the context that is returned. Otherwise, it is
         // ignored.
         global_table_ptr: *const GlobalSymbolTableInner
-    ) -> (Option<SymbolResolverFn>, *mut c_void, Option<LocalSymbolTable>) {
+    ) -> SymbolResolverSettings {
         match self {
-            SymbolResolver::None => (None, std::ptr::null_mut(), None),
-            SymbolResolver::Global => (
-                Some(orc_engine_global_symbol_resolver),
-                global_table_ptr.cast_mut().cast(),
-                None,
-            ),
-            SymbolResolver::Local(table) => (
-                Some(orc_engine_local_symbol_resolver),
-                unsafe { table.as_ptr().cast_mut().cast() },
-                Some(table),
-            ),
-            SymbolResolver::Custom(func, ctx) => (
-                Some(func),
-                ctx.cast_mut().cast(),
-                None,
-            ),
+            InternalSymbolResolver::None => SymbolResolverSettings {
+                resolver_fn: None,
+                context: std::ptr::null_mut(),
+                locals: None,
+            },
+            InternalSymbolResolver::Global => SymbolResolverSettings {
+                resolver_fn: Some(orc_engine_global_symbol_resolver),
+                context: global_table_ptr.cast_mut().cast(),
+                locals: None,
+            },
+            InternalSymbolResolver::Local(table) => SymbolResolverSettings {
+                resolver_fn: Some(orc_engine_local_symbol_resolver),
+                context: unsafe { table.as_ptr().cast_mut().cast() },
+                locals: Some(table),
+            },
         }
     }
 }
@@ -453,8 +501,7 @@ impl OrcModule {
 }
 
 // TODO (ErisianArchitect): Continue code review from this point.
-/// The managed struct for the [OrcEngine]. This is held in an atomic reference counted smart pointer, which makes it
-/// easy to dispose of the internal [LLVMOrcJITStackRef] when the strong reference count reaches zero.
+/// The managed struct for the LLVM Orc V1 [OrcEngine]. This is a safe wrapper for [LLVMOrcJITStackRef].
 #[derive(Debug)]
 pub(crate) struct OrcEngineInner {
     // The JITStack is like the Execution Engine of the Orc V1 API.
@@ -476,6 +523,8 @@ pub(crate) struct OrcEngineInner {
     /// The internal [OrcModule] storage that owns the [LocalSymbolTable] for each module in order to keep it alive for
     /// symbol resolution.
     pub(crate) modules: RwLock<HashMap<Box<str>, OrcModule>>,
+    // TODO (ErisianArchitect): The lockfree linked list might be a losing strategy. Perhaps stick with something more
+    //                          simple
     /// A lockfree linked list storage container for keeping lazy compile callbacks alive while the [OrcEngine] is
     /// alive.
     pub(crate) lazy_compile_callbacks: LockfreeLinkedList<LazyCompileCallback>,
@@ -700,27 +749,51 @@ impl OrcEngine {
     }
     
     /// Register a function with the given mangled name. This function will exist in the global fallback symbol table.
-    #[must_use]
     #[inline]
     pub fn register_mangled_function(
         &self,
         mangled_symbol: MangledSymbol,
         address: FunctionAddress,
-    ) -> Result<(), OrcError> {
-        if let Some(found_addr) = self.inner.symbol_table.insert_mangled(mangled_symbol.clone(), address.0) {
-            // insert back into the table
-            self.inner.symbol_table.insert_mangled(mangled_symbol.clone(), found_addr);
-            return Err(OrcError::MangledFunctionAlreadyRegistered(mangled_symbol));
-        }
-        Ok(())
+    ) -> Option<FunctionAddress> {
+        let old = self.inner.symbol_table.insert(mangled_symbol, address.0);
+        old.map(|old| unsafe { FunctionAddress::from_raw(old) })
     }
     
     /// Register a function with the given name. This function will exist in the global fallback symbol table.
     #[must_use]
     #[inline]
-    pub fn register_function(&self, name: &str, address: FunctionAddress) -> Result<(), OrcError> {
+    pub fn register_function(&self, name: &str, address: FunctionAddress) -> Option<FunctionAddress> {
         let mangled_symbol = self.mangle_symbol(name);
         self.register_mangled_function(mangled_symbol, address)
+    }
+    
+    /// Register multiple mangled functions at the same time. If the [MangledSymbol] is already present in the global
+    /// table, it will be overwritten.
+    #[inline]
+    pub fn register_mangled_functions<It: IntoIterator<Item = (MangledSymbol, FunctionAddress)>>(
+        &self,
+        functions: It,
+    ) {
+        self.inner.symbol_table.insert_many(
+            functions.into_iter().map(|(symbol, function)| (
+                symbol,
+                function.0,
+            )));
+    }
+    
+    /// Register multiple functions at the same time. If the function with the given name is already present in the
+    /// global table, it will be overwritten.
+    #[inline]
+    pub fn register_functions<S: AsRef<str>, It: IntoIterator<Item = (S, FunctionAddress)>>(
+        &self,
+        functions: It,
+    ) {
+        self.inner.symbol_table.insert_many(
+            functions.into_iter().map(move |(name, function)| (
+                self.mangle_symbol(name.as_ref()),
+                function.0,
+            ))
+        );
     }
     
     /// Gets the address of the symbol with the given name. This is an unsafe function because raw addresses are unsafe
@@ -806,7 +879,7 @@ impl OrcEngine {
         name: &str,
         module: Module<'_>,
         compilation_mode: CompilationMode,
-        resolver: SymbolResolver,
+        symbol_resolver: SymbolResolver,
     ) -> Result<(), OrcError> {
         let mut modules = self.inner.modules.write().unwrap();
         // Return an error if the name has already been registered. You can't have two modules with the same name, and you
@@ -822,8 +895,12 @@ impl OrcEngine {
         }
         let module = std::mem::ManuallyDrop::new(module);
         // Be free, data_layout!
-        module.data_layout.borrow_mut().take();
-        let (resolver, resolver_context, local_table) = resolver.into_tuple(self.inner.symbol_table.as_ptr());
+        drop(module.data_layout.borrow_mut().take());
+        let SymbolResolverSettings {
+            resolver_fn,
+            context: resolver_ctx,
+            locals,
+        } = symbol_resolver.into_inner().into_settings(self.inner.symbol_table.as_ptr());
         let add_compiled_ir_fn = match compilation_mode {
             CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
             CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
@@ -833,8 +910,8 @@ impl OrcEngine {
             self.inner.jit_stack,
             &mut handle,
             module.as_mut_ptr(),
-            resolver,
-            resolver_context,
+            resolver_fn,
+            resolver_ctx,
         ) };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
@@ -843,7 +920,7 @@ impl OrcEngine {
                 CompilationMode::Lazy => OrcError::AddLazilyCompiledIRFailure(err_string),
             });
         }
-        modules.insert(name.into(), OrcModule::new(handle, local_table));
+        modules.insert(name.into(), OrcModule::new(handle, locals));
         Ok(())
     }
     
@@ -865,17 +942,13 @@ impl OrcEngine {
         name: &str,
         module: Module<'_>,
         compilation_mode: CompilationMode,
-        local_symbol_table: Option<SymbolTable<'_>>,
+        symbol_resolver: SymbolResolver,
     ) -> Result<(), OrcError> {
         self.internal_add_module(
             name,
             module,
             compilation_mode,
-            if let Some(locals) = local_symbol_table {
-                SymbolResolver::Local(LocalSymbolTable::new(locals.take_inner()))
-            } else {
-                SymbolResolver::None
-            }
+            symbol_resolver,
         )
     }
     
@@ -888,7 +961,7 @@ impl OrcEngine {
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
-        local_symbol_table: Option<SymbolTable>,
+        symbol_resolver: SymbolResolver,
         mut modules: RwLockWriteGuard<'guard, HashMap<Box<str>, OrcModule>>,
         // If `modules.contains_key` has already been determined to be true, this will be false.
         // If this is true, that means the check hasn't been performed, and it must be performed.
@@ -897,35 +970,31 @@ impl OrcEngine {
         // TODO (ErisianArchitect): It would be better if a LocalSymbolTable were not created in the case where the
         //                          user does not provide a local symbol table. In this case, there would be no local
         //                          symbol resolution.
-        let symbol_table = if let Some(symbol_table) = local_symbol_table {
-            if symbol_table.jit_stack != self.inner.jit_stack {
-                return Err(OrcError::NotOwnedByOrcEngine);
-            }
-            symbol_table.take_inner()
-        } else {
-            HashMap::new()
-        };
         if check_modules_contains && modules.contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
-        let local_table = LocalSymbolTable::new(symbol_table);
+        let SymbolResolverSettings {
+            resolver_fn,
+            context: resolver_ctx,
+            locals,
+        } = symbol_resolver.into_inner().into_settings(self.inner.symbol_table.as_ptr());
         let mut handle = 0u64;
         let err = unsafe { LLVMOrcAddObjectFile(
             self.inner.jit_stack,
             &mut handle,
             memory_buffer.as_mut_ptr(),
-            Some(orc_engine_local_symbol_resolver),
+            resolver_fn,
             // This gets a pointer to the LocalSymbolTableInner within the Arc in the LocalSymbolTable.
             // this is used as the context for the module_symbol_resolver.
             // It's okay to cast it to *mut LocalSymbolTableInner from *const LocalSymbolTableInner because it will never be mutated.
             // The LocalSymbolTable is guaranteed to live as long as the module.
-            local_table.as_ptr().cast_mut().cast(),
+            resolver_ctx,
         ) };
         if !err.is_null() {
             let err_string = unsafe { LLVMErrorString::new(err) };
             return Err(OrcError::AddObjectFileFailure(err_string))
         }
-        modules.insert(name.into(), OrcModule::new(handle, Some(local_table)));
+        modules.insert(name.into(), OrcModule::new(handle, locals));
         Ok(())
     }
     
@@ -938,12 +1007,12 @@ impl OrcEngine {
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
-        local_symbol_table: Option<SymbolTable>,
+        symbol_resolver: SymbolResolver,
     ) -> Result<(), OrcError> {
         self.internal_add_object_from_memory(
             name,
             memory_buffer,
-            local_symbol_table,
+            symbol_resolver,
             self.inner.modules.write().unwrap(),
             // Check that the module hasn't already been registered.
             true,
@@ -958,7 +1027,7 @@ impl OrcEngine {
         &self,
         name: &str,
         object_file_path: P,
-        local_symbol_table: Option<SymbolTable>,
+        symbol_resolver: SymbolResolver,
     ) -> Result<(), OrcError> {
         let modules = self.inner.modules.write().unwrap();
         // Return an error if the name has already been registered. You can't have two modules with the same name, and you
@@ -970,7 +1039,7 @@ impl OrcEngine {
         self.internal_add_object_from_memory(
             name,
             &mem_buff,
-            local_symbol_table,
+            symbol_resolver,
             modules,
             // Don't check that the module has already been registered because that check has already been performed.
             false,
@@ -998,13 +1067,33 @@ impl OrcEngine {
         self.inner.modules.read().unwrap().contains_key(name)
     }
     
-    /// Create a lazy compile callback, which can be used to, you guessed it, lazily compile code.
+    /// Create a lazy compile callback, which creates a trampoline function that will call your callback in order to 
+    /// compile the final function for use in the OrcEngine. You can use any method for compiling the function.
     /// 
     /// The typical pattern is the use a closure/function that takes an [OrcEngine] as input and returns a
     /// [FunctionAddress]. The [FunctionAddress] can come from anywhere, so long as it points to a valid function. The
     /// lazy compile callback stub will then have its address swapped with the address returned from the lazy compile callback.
     /// You can even use the [OrcEngine] itself to compile the code, or you could return the address to a pre-existing
     /// function in Rust.
+    /// 
+    /// # Example
+    /// ```rust, no_run
+    /// use inkwell::{
+    ///     orc::OrcEngine,
+    ///     orc::function_address::FunctionAddress,
+    ///     fn_addr,
+    /// };
+    /// pub unsafe extern "C" fn compiled_function_example() {
+    ///     println!("Called the compiled function.");
+    /// }
+    /// let engine = OrcEngine::new_default().expect("Failed to create OrcEngine.");
+    /// let lazy_callback = engine.create_lazy_compile_callback(|engine: OrcEngine| {
+    ///     fn_addr!(compiled_function_example)
+    /// }).expect("Failed to create lazy compile callback.");
+    /// engine.register_function("my_lazy_callback", lazy_callback).expect("Failed to register function.");
+    /// // now `my_lazy_callback` is a globally registered function. You
+    /// // can now call the function in your JIT code in order to execute the lazy compiler.
+    /// ```
     #[must_use]
     pub fn create_lazy_compile_callback<C: LazyCompiler>(&self, compiler: C) -> Result<FunctionAddress, OrcError> {
         let lazy_compiler = LazyCompileCallback::new(self, compiler);

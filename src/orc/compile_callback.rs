@@ -1,6 +1,6 @@
 
 
-use std::{ffi::c_void, pin::Pin, sync::{atomic::{AtomicPtr, Ordering}, Arc, Mutex}};
+use std::{ffi::c_void, pin::Pin, sync::{Arc, Mutex}};
 
 use llvm_sys::{error::LLVMErrorRef, orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress}};
 

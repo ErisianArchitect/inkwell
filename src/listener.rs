@@ -1,61 +1,15 @@
-use std::sync::LazyLock;
-
 use llvm_sys::prelude::LLVMJITEventListenerRef;
 
-#[cfg(target_family = "unix")]
-use llvm_sys::execution_engine::LLVMCreateGDBRegistrationListener;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
-use llvm_sys::execution_engine::LLVMCreateIntelJITEventListener;
-#[cfg(target_os = "linux")]
-use llvm_sys::execution_engine::{
-    LLVMCreateOProfileJITEventListener,
-    LLVMCreatePerfJITEventListener,
-};
-
 // TODOC (ErisianArchitect): struct JitEventListener
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct JitEventListener {
     pub(crate) raw: LLVMJITEventListenerRef,
 }
 
-thread_local! {
-    #[cfg(target_family = "unix")]
-    static GDB_LISTENER: LazyLock<JitEventListener> = LazyLock::new(
-        || {
-            JitEventListener {
-                raw: unsafe { LLVMCreateGDBRegistrationListener() }
-            }
-        }
-    );
-    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
-    static INTEL_LISTENER: LazyLock<JitEventListener> = LazyLock::new(
-        || {
-            JitEventListener {
-                raw: unsafe { LLVMCreateIntelJITEventListener() }
-            }
-        }
-    );
-    #[cfg(target_os = "linux")]
-    static OPROFILE_LISTENER: LazyLock<JitEventListener> = LazyLock::new(
-        || {
-            JitEventListener {
-                raw: unsafe { LLVMCreateOProfileJITEventListener() }
-            }
-        }
-    );
-    #[cfg(target_os = "linux")]
-    static PERF_LISTENER: LazyLock<JitEventListener> = LazyLock::new(
-        || {
-            JitEventListener {
-                raw: unsafe { LLVMCreatePerfJITEventListener() }
-            }
-        }
-    );
-}
-
-
 // TODO (ErisianArchitect): impl JitEventListener
 impl JitEventListener {
+    /// The raw [LLVMJITEventListenerRef].
     #[must_use]
     #[inline]
     pub fn raw(&self) -> LLVMJITEventListenerRef {
@@ -67,29 +21,40 @@ impl JitEventListener {
     #[must_use]
     #[inline]
     pub fn gdb() -> Self {
-        GDB_LISTENER.with(|inner| **inner)
+        JitEventListener {
+            raw: unsafe { llvm_sys::execution_engine::LLVMCreateGDBRegistrationListener() }
+        }
     }
 
     /// Creates an Intel JIT Event Listener for the Intel VTune Amplifier.
-    /// This should only be used on intel CPUs.
+    /// This should only be used on intel CPUs or CPUs that support the Intel VTune Amplifier.
+    /// The `vtune` feature must be enabled to use this listener.
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "vtune"))]
     #[must_use]
     #[inline]
     pub fn intel() -> Self {
-        INTEL_LISTENER.with(|inner| **inner)
+        JitEventListener {
+            raw: unsafe { llvm_sys::execution_engine::LLVMCreateIntelJITEventListener() }
+        }
     }
 
+    /// Creates an OProfile JIT Event Listener.
     #[cfg(target_os = "linux")]
     #[must_use]
     #[inline]
     pub fn oprofile() -> Self {
-        OPROFILE_LISTENER.with(|inner| **inner)
+        JitEventListener {
+            raw: unsafe { llvm_sys::execution_engine::LLVMCreateOProfileJITEventListener() }
+        }
     }
-
+    
+    /// Creates a Perf JIT Event Listener.
     #[cfg(target_os = "linux")]
     #[must_use]
     #[inline]
     pub fn perf() -> Self {
-        PERF_LISTENER.with(|inner| **inner)
+        JitEventListener {
+            raw: unsafe { llvm_sys::execution_engine::LLVMCreatePerfJITEventListener() }
+        }
     }
 }

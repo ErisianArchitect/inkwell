@@ -46,16 +46,17 @@ impl GlobalSymbolTable {
     }
     
     #[inline]
-    pub fn insert_mangled(&self, mangled_symbol: MangledSymbol, addr: LLVMOrcTargetAddress) -> Option<LLVMOrcTargetAddress> {
+    pub fn insert(
+        &self,
+        mangled_symbol: MangledSymbol,
+        addr: LLVMOrcTargetAddress,
+    ) -> Option<LLVMOrcTargetAddress> {
         self.inner.table.write().unwrap().insert(mangled_symbol, addr)
     }
     
-    // TODO (ErisianArchitect): multi_insert_mangled, multi_insert
-    // pub fn multi_insert_mangled(&self, )
-    #[must_use]
     #[inline]
-    pub fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<LLVMOrcTargetAddress> {
-        self.inner.table.read().unwrap().get(mangled_symbol).cloned()
+    pub fn insert_many<It: IntoIterator<Item = (MangledSymbol, LLVMOrcTargetAddress)>>(&self, symbols: It) {
+        self.inner.table.write().unwrap().extend(symbols);
     }
     
     #[must_use]
@@ -70,7 +71,7 @@ pub(crate) struct LocalSymbolTableInner {
     local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>,
 }
 
-impl<'ctx> LocalSymbolTableInner {
+impl LocalSymbolTableInner {
     /// First searches the local table for the symbol, then if not found, searches the global table.
     /// Returns None if the symbol was not found in either table.
     pub(crate) fn get_symbol(&self, mangled_symbol: &MangledSymbol) -> Option<LLVMOrcTargetAddress> {
@@ -80,6 +81,7 @@ impl<'ctx> LocalSymbolTableInner {
 }
 
 // TODOC (ErisianArchitect): struct LocalSymbolTable
+#[repr(transparent)]
 #[derive(Debug, Clone)]
 pub(crate) struct LocalSymbolTable {
     // This doesn't need interior mutability, and in fact the LocalSymbolTable should be immutable, but this makes it
@@ -95,7 +97,7 @@ impl LocalSymbolTable {
         Self {
             inner: Arc::new(LocalSymbolTableInner {
                 local_table,
-            })
+            }),
         }
     }
     
@@ -110,6 +112,7 @@ impl LocalSymbolTable {
 #[derive(Debug)]
 pub struct SymbolTable<'jit> {
     // It's safe for SymbolTable to have the JITStackRef because it is tied to the lifetime of the OrcEngine.
+    // The JITStack is needed for name mangling.
     pub(crate) jit_stack: LLVMOrcJITStackRef,
     pub(crate) symbols: HashMap<MangledSymbol, LLVMOrcTargetAddress>,
     _lifetime: PhantomData<&'jit ()>,
@@ -127,13 +130,30 @@ impl<'jit> SymbolTable<'jit> {
         }
     }
     
-    #[inline]
-    pub fn register_mangled(&mut self, mangled_symbol: MangledSymbol, address: FunctionAddress) -> Option<LLVMOrcTargetAddress> {
-        self.symbols.insert(mangled_symbol, address.0)
+    pub fn register_many_mangled<It: IntoIterator<Item = (MangledSymbol, FunctionAddress)>>(&mut self, symbols: It) {
+        self.symbols.extend(symbols.into_iter().map(|(mangled, addr)| (mangled, addr.0)));
+    }
+    
+    pub fn register_many<S: AsRef<str>, It: IntoIterator<Item = (S, FunctionAddress)>>(&mut self, symbols: It) {
+        let jit_stack = self.jit_stack;
+        self.symbols.extend(symbols.into_iter().map(move |(name, addr)| (
+            unsafe { mangle_symbol(jit_stack, name.as_ref()) },
+            addr.0,
+        )));
     }
     
     #[inline]
-    pub fn register(&mut self, name: &str, address: FunctionAddress) -> Option<LLVMOrcTargetAddress> {
+    pub fn register_mangled(
+        &mut self,
+        mangled_symbol: MangledSymbol,
+        address: FunctionAddress,
+    ) -> Option<FunctionAddress> {
+        let old = self.symbols.insert(mangled_symbol, address.0);
+        old.map(|old| unsafe { FunctionAddress::from_raw(old) })
+    }
+    
+    #[inline]
+    pub fn register(&mut self, name: &str, address: FunctionAddress) -> Option<FunctionAddress> {
         let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
         self.register_mangled(mangled_symbol, address)
     }
@@ -159,12 +179,17 @@ impl<'jit> SymbolTable<'jit> {
 }
 
 // pub type LLVMOrcSymbolResolverFn = Option<extern "C" fn(_: *const c_char, _: *mut c_void) -> u64>;
-/// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR for global symbol resolution.
-pub(crate) extern "C" fn orc_engine_global_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> LLVMOrcTargetAddress {
+/// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR
+/// for global symbol resolution.
+pub(crate) extern "C" fn orc_engine_global_symbol_resolver(
+    mangled_cstr: *const c_char,
+    context: *mut c_void,
+) -> LLVMOrcTargetAddress {
     let sym_table_ptr: *const GlobalSymbolTableInner = context.cast();
     let globals = unsafe { sym_table_ptr.as_ref() };
     let Some(globals) = globals else {
         // This is an error, but we cannot panic here.
+        eprintln!("Error: Context for global symbol resolver was null.");
         return 0;
     };
     // Create a temporary MangledSymbol value based on the provided cstr. This MangledSymbol will be prevented from
@@ -184,12 +209,17 @@ pub(crate) extern "C" fn orc_engine_global_symbol_resolver(mangled_cstr: *const 
 }
 
 // pub type LLVMOrcSymbolResolverFn = Option<extern "C" fn(_: *const c_char, _: *mut c_void) -> u64>;
-/// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR for local symbol resolution.
-pub(crate) extern "C" fn orc_engine_local_symbol_resolver(mangled_cstr: *const c_char, context: *mut c_void) -> LLVMOrcTargetAddress {
+/// This function can be passed as LLVMOrcSymbolResolverFn in LLVMOrcAddEagerCompiledIR and LLVMOrcAddLazilyCompiledIR
+/// for local symbol resolution.
+pub(crate) extern "C" fn orc_engine_local_symbol_resolver(
+    mangled_cstr: *const c_char,
+    context: *mut c_void,
+) -> LLVMOrcTargetAddress {
     let sym_table_ptr: *const LocalSymbolTableInner = context.cast();
     let locals = unsafe { sym_table_ptr.as_ref() };
     let Some(locals) = locals else {
         // This is an error, but we cannot panic here.
+        eprintln!("Error: Context for the local symbol resolver was null.");
         return 0;
     };
     // Create a temporary MangledSymbol value based on the provided cstr. This MangledSymbol will be prevented from
