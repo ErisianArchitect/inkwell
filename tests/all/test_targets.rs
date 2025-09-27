@@ -186,6 +186,9 @@ fn test_default_triple() {
         vec!["pc", "unknown", "redhat"]
     } else if cfg!(target_os = "macos") {
         vec!["apple"]
+    } else if cfg!(target_os = "windows") {
+        // NOTE: Might also support `cygnus` and `mingw32` vendors.
+        vec!["pc", "unknown", "uwp"]
     } else {
         vec![]
     };
@@ -193,11 +196,26 @@ fn test_default_triple() {
     let has_known_vendor = vendors.iter().any(|vendor| default_triple.contains(*vendor));
     assert!(has_known_vendor, "Target triple '{default_triple}' has unknown vendor");
 
+    
+    #[cfg(target_os = "linux")]
     let os = [
-        #[cfg(target_os = "linux")]
         "linux",
-        #[cfg(target_os = "macos")]
+    ];
+    #[cfg(target_os = "macos")]
+    let os = [
         "darwin",
+    ];
+    #[cfg(target_os = "windows")]
+    let os = [
+        "windows",
+    ];
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "windows",
+    )))]
+    let os: [&str; 0] = [
+        // unknown OS.
     ];
     let has_known_os = os.iter().any(|os| default_triple.contains(*os));
     assert!(has_known_os, "Target triple '{default_triple}' has unknown OS");

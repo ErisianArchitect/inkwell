@@ -145,8 +145,10 @@ fn test_interpreter_execution_engine() {
     assert!(module.create_interpreter_execution_engine().is_ok());
 }
 
+// TODO: Update the following code to work on Windows. Currently, the tests crate won't build on Windows due to OS
+//       specific functions/constants.
+#[cfg(not(target_os = "windows"))]
 #[test]
-
 fn test_mcjit_execution_engine_with_memory_manager() {
     let mmgr = MockMemoryManager::new();
     let mmgr_for_test = mmgr.clone();
@@ -230,6 +232,9 @@ fn test_mcjit_execution_engine_with_memory_manager() {
     assert_eq!(1, data.destroy_calls);
 }
 
+// TODO: Update the following code to work on Windows. Currently, the tests crate won't build on Windows due to OS
+//       specific functions/constants.
+#[cfg(not(target_os = "windows"))]
 #[test]
 fn test_create_mcjit_engine_when_already_owned() {
     let context = Context::create();
@@ -347,12 +352,18 @@ fn test_add_remove_module() {
 //     };
 // }
 
+// TODO: Update the following code to work on Windows. Currently, the tests crate won't build on Windows due to OS
+//       specific functions/constants.
+#[cfg(not(target_os = "windows"))]
 /// A mock memory manager that allocates memory in fixed-size pages for testing.
 #[derive(Debug, Clone)]
 struct MockMemoryManager {
     data: Rc<RefCell<MockMemoryManagerData>>,
 }
 
+// TODO: Update the following code to work on Windows. Currently, the tests crate won't build on Windows due to OS
+//       specific functions/constants.
+#[cfg(not(target_os = "windows"))]
 #[derive(Debug)]
 struct MockMemoryManagerData {
     fixed_capacity_bytes: usize,
@@ -371,6 +382,9 @@ struct MockMemoryManagerData {
     destroy_calls: usize,
 }
 
+// TODO: Update the following code to work on Windows. Currently, the tests crate won't build on Windows due to OS
+//       specific functions/constants.
+#[cfg(not(target_os = "windows"))]
 impl MockMemoryManager {
     pub fn new() -> Self {
         let capacity_bytes = 128 * 1024;
@@ -417,7 +431,9 @@ impl MockMemoryManager {
         }
     }
 }
-
+// TODO: Update the following code to work on Windows. Currently, the tests crate won't build on Windows due to OS
+//       specific functions/constants.
+#[cfg(not(target_os = "windows"))]
 impl McjitMemoryManager for MockMemoryManager {
     fn allocate_code_section(
         &mut self,
