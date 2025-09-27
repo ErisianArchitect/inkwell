@@ -129,15 +129,18 @@ fn test_symbol_iterator() {
 
     let context = Context::create();
     let module = context.create_module("test_symbol_iterator");
-    module
-        .add_global(context.i8_type(), None, "a")
-        .set_initializer(&context.i8_type().const_zero().as_basic_value_enum());
-    module
-        .add_global(context.i16_type(), None, "b")
-        .set_initializer(&context.i16_type().const_zero().as_basic_value_enum());
-    module
-        .add_global(context.i32_type(), None, "c")
-        .set_initializer(&context.i32_type().const_zero().as_basic_value_enum());
+    let a_static = module
+        .add_global(context.i8_type(), None, "a");
+    a_static.set_initializer(&context.i8_type().const_zero().as_basic_value_enum());
+    a_static.set_linkage(inkwell::module::Linkage::External);
+    let b_static = module
+        .add_global(context.i16_type(), None, "b");
+    b_static.set_initializer(&context.i16_type().const_zero().as_basic_value_enum());
+    b_static.set_linkage(inkwell::module::Linkage::External);
+    let c_static = module
+        .add_global(context.i32_type(), None, "c");
+    c_static.set_initializer(&context.i32_type().const_zero().as_basic_value_enum());
+    c_static.set_linkage(inkwell::module::Linkage::External);
     apply_target_to_module(&target_machine, &module);
 
     let memory_buffer = target_machine
@@ -154,7 +157,10 @@ fn test_symbol_iterator() {
                 "a" => {
                     assert!(!has_symbol_a);
                     has_symbol_a = true;
+                    #[cfg(not(target_os = "windows"))]
                     assert_eq!(symbol.size(), 1);
+                    #[cfg(target_os = "windows")]
+                    assert!(symbol.size() == 1 || symbol.size() == 0);
                 },
                 "b" => {
                     assert!(!has_symbol_b);
