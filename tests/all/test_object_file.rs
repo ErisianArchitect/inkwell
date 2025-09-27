@@ -157,10 +157,13 @@ fn test_symbol_iterator() {
                 "a" => {
                     assert!(!has_symbol_a);
                     has_symbol_a = true;
-                    #[cfg(not(target_os = "windows"))]
-                    assert_eq!(symbol.size(), 1);
-                    #[cfg(target_os = "windows")]
-                    assert!(symbol.size() == 1 || symbol.size() == 0);
+                    if cfg!(target_os = "windows") {
+                        // On windows, you can't rely on `size()` for getting the symbol size for types that are a
+                        // single byte.
+                        assert!(matches!(symbol.size(), 0 | 1));
+                    } else {
+                        assert_eq!(symbol.size(), 1);
+                    }
                 },
                 "b" => {
                     assert!(!has_symbol_b);
