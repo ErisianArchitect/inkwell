@@ -38,9 +38,7 @@ macro_rules! impl_unsafe_fn {
         impl<Output, $( $param ),*> UnsafeOrcFn for unsafe extern "C" fn($( $param ),*) -> Output {}
 
         impl<Output, $( $param ),*> OrcFunction<'_, unsafe extern "C" fn($( $param ),*) -> Output> {
-            /// This method allows you to call the underlying function while making
-            /// sure that the backing storage is not dropped too early and
-            /// preserves the `unsafe` marker for any calls.
+            /// Calls the function.
             #[allow(non_snake_case)]
             #[inline(always)]
             pub unsafe fn call(&self, $( $param: $param ),*) -> Output {
