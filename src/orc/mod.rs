@@ -25,7 +25,7 @@ pub mod orc_jit_fn;
 pub mod symbol_table;
 
 use std::{
-    collections::HashMap, ffi::{c_char, c_void}, path::Path, sync::{Arc, RwLock, RwLockWriteGuard}
+    collections::HashMap, ffi::{c_char, c_void}, path::Path, sync::{Arc, Mutex, RwLock, RwLockWriteGuard}
 };
 
 use llvm_sys::orc::{
@@ -46,23 +46,16 @@ use {
 };
 
 use crate::{
-    error::LLVMErrorString,
-    lockfree_linked_list::{LockfreeLinkedList, LockfreeLinkedListNode},
-    memory_buffer::MemoryBuffer,
-    module::Module,
-    orc::{
+    context::Context, error::LLVMErrorString, lockfree_linked_list::{LockfreeLinkedList, LockfreeLinkedListNode}, memory_buffer::MemoryBuffer, module::Module, orc::{
         compile_callback::{lazy_compile_callback, LLVMOrcCreateLazyCompileCallback, LazyCompileCallback, LazyCompiler},
-        error::OrcError,
+        error::{OrcError, Result},
         function_address::FunctionAddress,
         mangled_symbol::{mangle_symbol, MangledSymbol},
         orc_jit_fn::{OrcFunction, UnsafeOrcFn},
         symbol_table::{
             orc_engine_global_symbol_resolver, orc_engine_local_symbol_resolver, GlobalSymbolTable, GlobalSymbolTableInner, LocalSymbolTable, SymbolTable
         },
-    },
-    support::{to_c_str, LLVMString},
-    targets::{CodeModel, RelocMode, Target, TargetMachine},
-    OptimizationLevel,
+    }, support::{to_c_str, LLVMString}, targets::{CodeModel, RelocMode, Target, TargetMachine}, OptimizationLevel
 };
 
 /// The [CompilationMode] is used to tell the Orc JIT engine to compile a module either lazily, or eagerly.
@@ -476,6 +469,26 @@ orc_engine_event_listener_flags_impl!(
     has_perf_event_listener;
 );
 
+#[derive(Debug, Default)]
+pub(crate) struct KeepAlive {
+    keep_alive_list: Vec<Box<dyn std::any::Any>>,
+}
+
+impl KeepAlive {
+    #[must_use]
+    #[inline]
+    pub const fn new() -> Self {
+        Self {
+            keep_alive_list: Vec::new(),
+        }
+    }
+    
+    #[inline]
+    pub fn push<T: std::any::Any>(&mut self, object: Box<T>) {
+        self.keep_alive_list.push(object);
+    }
+}
+
 /// Internal [OrcModule] for the [OrcEngine].
 /// When a [Module] is added to the [OrcEngine], it is transformed into an [OrcModule]. The [OrcModule] owns a local
 /// symbol table that is used for symbol resolution fallback. The [OrcEngine] JIT Stack manages the lifetime of the
@@ -512,7 +525,7 @@ pub(crate) struct OrcEngineInner {
     // The global fallback symbol table that functions can be registered to.
     // If a module uses the global symbol table as a fallback, then it will search
     // the global table after searching the local resolutions.
-    // Having a per-module global symbol table fallback is likely not desireable, as it would complicate symbol
+    // Having a per-module global symbol table fallback is likely not desirable, as it would complicate symbol
     // resolution.
     // Symbols are resolved in LIFO order, where the last module that you added is searched first, then the previous
     // module. At each search stage, it will perform local resolution first for external symbols define in the module.
@@ -523,11 +536,7 @@ pub(crate) struct OrcEngineInner {
     /// The internal [OrcModule] storage that owns the [LocalSymbolTable] for each module in order to keep it alive for
     /// symbol resolution.
     pub(crate) modules: RwLock<HashMap<Box<str>, OrcModule>>,
-    // TODO (ErisianArchitect): The lockfree linked list might be a losing strategy. Perhaps stick with something more
-    //                          simple
-    /// A lockfree linked list storage container for keeping lazy compile callbacks alive while the [OrcEngine] is
-    /// alive.
-    pub(crate) lazy_compile_callbacks: LockfreeLinkedList<LazyCompileCallback>,
+    pub(crate) keep_alive_list: Mutex<KeepAlive>,
     // TODO: Update this cfg if any listeners are added that have different requirements.
     // The flags do not need to be included if there are no available listeners.
     /// The [OrcEngineFlags], which are only available in certain configurations.
@@ -549,10 +558,119 @@ impl Drop for OrcEngineInner {
     }
 }
 
-// TODO (ErisianArchitect): Better Debug implementation.
-/// [OrcEngine] is a (mostly) safe wrapper around the LLVM Orc JIT Stack ([LLVMOrcJITStackRef]). It contains
-/// functionality for user-supplied symbol resolution, registration of user functions, function lookup of modules
-/// within the JIT Stack, event listeners, lazy compilation callbacks, and indirect stubs.
+// TODO (ErisianArchitect): Make sure to update this documentation when the Context ownership problem is solved.
+/// [OrcEngine] is a (mostly) safe wrapper around the LLVM Orc JIT Stack ([LLVMOrcJITStackRef]).
+/// 
+/// # Features
+/// * User-supplied per-module symbol resolution fallback.
+/// * Registration of functions.
+/// * Function lookup.
+/// * JIT event listeners.
+/// * Lazy compilation callbacks.
+/// * Indirect stubs.
+/// * Object files.
+/// * 
+/// 
+/// # Examples
+/// ### Creating an OrcEngine
+/// ```rust
+/// use inkwell::orc::{
+///     error::OrcError,
+///     OrcEngine,
+/// };
+/// use inkwell::targets::{
+///     CodeModel,
+///     InitializationConfig,
+///     RelocMode,
+///     Target,
+///     TargetMachine,
+/// };
+/// use inkwell::OptimizationLevel;
+/// 
+/// fn main() -> Result<(), OrcError> {
+///     // It is necessary to initialize the target you wish to create an OrcEngine for.
+///     Target::initialize_native(&InitializationConfig::default())
+///         .expect("Failed to initialize native target");
+///     // Create an OrcEngine from a TargetMachine.
+///     let triple = TargetMachine::get_default_triple();
+///     let target = Target::from_triple(&triple)?;
+///     let target_machine = target.create_target_machine(
+///         &triple,
+///         TargetMachine::get_host_cpu_name().to_str().unwrap(),
+///         TargetMachine::get_host_cpu_features().to_str().unwrap(),
+///         OptimizationLevel::Default,
+///         RelocMode::Default,
+///         CodeModel::Default,
+///     ).expect("Failed to create host target machine.");
+///     
+///     let engine = OrcEngine::with_target_machine(target_machine)?;
+///     
+///     // Create an OrcEngine from TargetMachine settings.
+///     // This will create an OrcEngine for the host target machine.
+///     let engine = OrcEngine::new(
+///         OptimizationLevel::Default,
+///         RelocMode::Default,
+///         CodeModel::Default,
+///         None,
+///     )?;
+/// 
+///     // Create an OrcEngine with a specific OptimizationLevel, but otherwise
+///     // use the default settings.
+///     let engine = OrcEngine::with_optimization_level(OptimizationLevel::Aggressive)?;
+/// 
+///     // Create an OrcEngine with default TargetMachine settings (recommended)
+///     let engine = OrcEngine::new_default()?;
+///     Ok(())
+/// }
+/// ```
+/// ### Adding Modules
+/// ```rust
+/// use inkwell::orc::{
+///     error::{OrcError, Result},
+///     CompilationMode,
+///     OrcEngine,
+/// };
+/// use inkwell::targets::{Target, InitializationConfig};
+/// use inkwell::context::Context;
+/// fn main() -> Result<()> {
+///     // First initialize the Target. Here, we initialize the native
+///     // target since that's the one we are running the OrcEngine on.
+///     Target::initialize_native(&InitializationConfig::default())
+///         .expect("Failed to initialize Target.");
+///     
+///     let context = Context::create();
+///     let module = context.create_module("main");
+///     
+///     // Here, you would build the module.
+///     
+///     let engine = OrcEngine::new_default()?;
+/// 
+///     engine.add_module(
+///         // Unique name for the module.
+///         "main",
+///         module,
+///         // Enables lazy compilation. Eager compilation may
+///         // be useless on some systems.
+///         CompilationMode::Lazy,
+///         // optional SymbolTable, which can be created with
+///         // `OrcEngine::create_symbol_table`.
+///         // The symbol table passed to this function must
+///         // have been created by the same OrcEngine.
+///         // This SymbolTable is used for fallback local
+///         // symbol resolution for this module.
+///         None,
+///     )?;
+///     // If the context is dropped before the engine, it will most
+///     // likely cause a segmentation fault.
+///     drop(engine);
+///     drop(context);
+///     Ok(())
+/// }
+/// ```
+/// # Note
+/// When a [Module] is added to the [OrcEngine], the [OrcEngine] takes ownership of it. It also requires that the
+/// module's [Context] is kept alive longer than the [OrcEngine] is alive. If the [Context] is dropped before the
+/// [OrcEngine], it will likely cause a segmentation fault.
 #[derive(Debug, Clone)]
 pub struct OrcEngine {
     /// The inner smart pointer for the [OrcEngine].
@@ -579,12 +697,12 @@ impl OrcEngine {
         if jit_stack.is_null() {
             return Err(OrcError::CreateInstanceFailure);
         }
-        Ok(Self {
+        let engine = Self {
             inner: Arc::new(OrcEngineInner {
                 jit_stack,
                 symbol_table: GlobalSymbolTable::new(HashMap::new()),
                 modules: RwLock::new(HashMap::new()),
-                lazy_compile_callbacks: LockfreeLinkedList::new(),
+                keep_alive_list: Mutex::new(KeepAlive::new()),
                 // TODO: Update this cfg if any listeners are added that have different requirements.
                 // The flags do not need to be included if there are no available listeners.
                 #[cfg(any(
@@ -593,7 +711,19 @@ impl OrcEngine {
                 ))]
                 flags: OrcEngineFlags::new(),
             })
-        })
+        };
+        // Setup the global symbol resolution module.
+        let self_context = Context::create();
+        let globals_dummy_module = self_context.create_module("globals");
+        engine.internal_add_module(
+            "globals",
+            globals_dummy_module,
+            CompilationMode::Lazy,
+            SymbolResolver::global(),
+        )?;
+        // The context must be kept alive while the OrcEngine is alive.
+        engine.keep_alive(self_context);
+        Ok(engine)
     }
     
     /// Creates a new [OrcEngine] with the given [TargetMachine] configuration options.
@@ -616,7 +746,7 @@ impl OrcEngine {
             #[inline(always)]
             fn to_str(&self) -> &str {
                 match self {
-                    Self::Str(str) => str,
+                    &Self::Str(str) => str,
                     Self::LLVM(llvm_string) => llvm_string.to_str().unwrap(),
                 }
             }
@@ -637,10 +767,54 @@ impl OrcEngine {
         Self::with_target_machine(target_machine)
     }
     
+    /// Create a new [OrcEngine] with the given [OptimizationLevel].
+    /// 
+    /// This is equivalent to [OrcEngine::new] with the given [OptimizationLevel] and default settings:
+    /// ```rust
+    /// use inkwell::orc::OrcEngine;
+    /// use inkwell::targets::{CodeModel, RelocMode};
+    /// use inkwell::OptimizationLevel;
+    /// use inkwell::targets::{Target, InitializationConfig};
+    /// 
+    /// Target::initialize_native(&InitializationConfig::default())
+    ///     .expect("Failed to initialize native target");
+    /// 
+    /// // [Your optimization level here]
+    /// let optimization_level = OptimizationLevel::Default;
+    /// let engine = OrcEngine::with_optimization_level(optimization_level)
+    ///     .expect("Failed to create OrcEngine.");
+    /// // is equivalent to:
+    /// let engine = OrcEngine::new(
+    ///     optimization_level,
+    ///     RelocMode::Default,
+    ///     CodeModel::Default,
+    ///     None,
+    /// ).expect("Failed to create OrcEngine.");
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn with_optimization_level(optimization_level: OptimizationLevel) -> Result<Self> {
+        Self::new(
+            optimization_level,
+            RelocMode::Default,
+            CodeModel::Default,
+            None,
+        )
+    }
+    
     /// Creates a new [OrcEngine] with the default [TargetMachine] settings.
     #[must_use]
+    #[inline]
     pub fn new_default() -> Result<Self, OrcError> {
         Self::new(OptimizationLevel::Default, RelocMode::Default, CodeModel::Default, None)
+    }
+    
+    #[must_use]
+    pub fn is_module_name_reserved(name: &str) -> bool {
+        match name {
+            "global" => true,
+            _ => false,
+        }
     }
     
     /// The internal [LLVMOrcJITStackRef]. Use at your own risk.
@@ -648,6 +822,17 @@ impl OrcEngine {
     #[inline]
     pub fn jit_stack_ref(&self) -> LLVMOrcJITStackRef {
         self.inner.jit_stack
+    }
+    
+    /// Keep objects alive for the duration of the OrcEngine's lifetime.
+    #[inline]
+    pub(crate) fn keep_alive<T: std::any::Any>(&self, object: T) {
+        self.inner.keep_alive_list.lock().unwrap().push(Box::new(object));
+    }
+    
+    #[inline]
+    pub(crate) fn keep_alive_boxed<T: std::any::Any>(&self, object: Box<T>) {
+        self.inner.keep_alive_list.lock().unwrap().push(object);
     }
     
     // Unfortunately there is no demangle function, so this is an irreversible operation.
@@ -796,6 +981,16 @@ impl OrcEngine {
         );
     }
     
+    #[inline]
+    pub fn register_mangled_functions_from_slice(&self, functions: &[(MangledSymbol, FunctionAddress)]) {
+        self.register_mangled_functions(functions.iter().cloned());
+    }
+    
+    #[inline]
+    pub fn register_functions_from_slice<S: AsRef<str>>(&self, functions: &[(S, FunctionAddress)]) {
+        self.register_functions(functions.iter().map(|(name, function)| (name, *function)));
+    }
+    
     /// Gets the address of the symbol with the given name. This is an unsafe function because raw addresses are unsafe
     /// territory. You are not meant to work with raw addresses unless absolutely necessary.
     /// 
@@ -859,7 +1054,7 @@ impl OrcEngine {
         name: &str,
     ) -> Result<OrcFunction<'ctx, F>, OrcError> {
         let addr = self.get_symbol_address(name)?;
-        Ok(OrcFunction::new(unsafe { std::mem::transmute_copy(&addr) }))
+        Ok(OrcFunction::<'ctx, F>::new(unsafe { std::mem::transmute_copy(&addr) }))
     }
     
     /// Get a function within this [OrcEngine] from the module with the given name.
@@ -884,6 +1079,9 @@ impl OrcEngine {
         let mut modules = self.inner.modules.write().unwrap();
         // Return an error if the name has already been registered. You can't have two modules with the same name, and you
         // can't overwrite modules. It's improper.
+        if Self::is_module_name_reserved(name) {
+            return Err(OrcError::ReservedModuleName(name.into()));
+        }
         if modules.contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
@@ -905,7 +1103,7 @@ impl OrcEngine {
             CompilationMode::Eager => LLVMOrcAddEagerlyCompiledIR,
             CompilationMode::Lazy => LLVMOrcAddLazilyCompiledIR,
         };
-        let mut handle = 0 as LLVMOrcModuleHandle;
+        let mut handle = 0;
         let err = unsafe { add_compiled_ir_fn(
             self.inner.jit_stack,
             &mut handle,
@@ -933,7 +1131,7 @@ impl OrcEngine {
     /// Use [CompilationMode::Eager] to eagerly compile the module (compilation is immediate).
     /// Use [CompilationMode::Lazy] to lazily compile the module (compilation on demand).
     /// 
-    /// The `local_symbol_table` is for local symbol resolution (function lookup) fallback.
+    /// `locals` is for local symbol resolution fallback (optional).
     /// 
     /// The module name must be unique (no other module added to this engine by that name).
     #[must_use]
@@ -942,13 +1140,13 @@ impl OrcEngine {
         name: &str,
         module: Module<'_>,
         compilation_mode: CompilationMode,
-        symbol_resolver: SymbolResolver,
+        locals: Option<SymbolTable<'_>>,
     ) -> Result<(), OrcError> {
         self.internal_add_module(
             name,
             module,
             compilation_mode,
-            symbol_resolver,
+            locals.map(SymbolResolver::local).unwrap_or_else(SymbolResolver::none),
         )
     }
     
@@ -957,28 +1155,30 @@ impl OrcEngine {
     /// Internal function for adding an object from memory. Utilized by [OrcEngine::add_object_from_memory] and
     /// [OrcEngine::add_object_file].
     #[inline] // This is only used in two places (as of writing this comment), so this should be marked as inline.
-    fn internal_add_object_from_memory<'guard>(
+    fn internal_add_object_from_memory(
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
         symbol_resolver: SymbolResolver,
-        mut modules: RwLockWriteGuard<'guard, HashMap<Box<str>, OrcModule>>,
+        mut modules: RwLockWriteGuard<'_, HashMap<Box<str>, OrcModule>>,
         // If `modules.contains_key` has already been determined to be true, this will be false.
         // If this is true, that means the check hasn't been performed, and it must be performed.
-        check_modules_contains: bool,
+        needs_name_check: bool,
     ) -> Result<(), OrcError> {
-        // TODO (ErisianArchitect): It would be better if a LocalSymbolTable were not created in the case where the
-        //                          user does not provide a local symbol table. In this case, there would be no local
-        //                          symbol resolution.
-        if check_modules_contains && modules.contains_key(name) {
-            return Err(OrcError::RepeatModuleName(name.into()));
+        if needs_name_check {
+            if Self::is_module_name_reserved(name) {
+                return Err(OrcError::ReservedModuleName(name.into()));
+            }
+            if modules.contains_key(name) {
+                return Err(OrcError::RepeatModuleName(name.into()));
+            }
         }
         let SymbolResolverSettings {
             resolver_fn,
             context: resolver_ctx,
             locals,
         } = symbol_resolver.into_inner().into_settings(self.inner.symbol_table.as_ptr());
-        let mut handle = 0u64;
+        let mut handle = 0;
         let err = unsafe { LLVMOrcAddObjectFile(
             self.inner.jit_stack,
             &mut handle,
@@ -1007,12 +1207,12 @@ impl OrcEngine {
         &self,
         name: &str,
         memory_buffer: &MemoryBuffer,
-        symbol_resolver: SymbolResolver,
+        locals: Option<SymbolTable<'_>>,
     ) -> Result<(), OrcError> {
         self.internal_add_object_from_memory(
             name,
             memory_buffer,
-            symbol_resolver,
+            locals.map(SymbolResolver::local).unwrap_or_else(SymbolResolver::none),
             self.inner.modules.write().unwrap(),
             // Check that the module hasn't already been registered.
             true,
@@ -1023,15 +1223,18 @@ impl OrcEngine {
     // added to the engine.
     /// Add an object file to the [OrcEngine].
     #[must_use]
-    pub fn add_object_file<'ctx, P: AsRef<Path>>(
+    pub fn add_object_file<P: AsRef<Path>>(
         &self,
         name: &str,
         object_file_path: P,
-        symbol_resolver: SymbolResolver,
+        locals: Option<SymbolTable<'_>>,
     ) -> Result<(), OrcError> {
         let modules = self.inner.modules.write().unwrap();
         // Return an error if the name has already been registered. You can't have two modules with the same name, and you
         // can't overwrite modules. It's improper.
+        if Self::is_module_name_reserved(name) {
+            return Err(OrcError::ReservedModuleName(name.into()));
+        }
         if modules.contains_key(name) {
             return Err(OrcError::RepeatModuleName(name.into()));
         }
@@ -1039,7 +1242,7 @@ impl OrcEngine {
         self.internal_add_object_from_memory(
             name,
             &mem_buff,
-            symbol_resolver,
+            locals.map(SymbolResolver::local).unwrap_or_else(SymbolResolver::none),
             modules,
             // Don't check that the module has already been registered because that check has already been performed.
             false,
@@ -1067,6 +1270,7 @@ impl OrcEngine {
         self.inner.modules.read().unwrap().contains_key(name)
     }
     
+    // TODO (ErisianArchitect): More extensive example needed.
     /// Create a lazy compile callback, which creates a trampoline function that will call your callback in order to 
     /// compile the final function for use in the OrcEngine. You can use any method for compiling the function.
     /// 
@@ -1077,7 +1281,7 @@ impl OrcEngine {
     /// function in Rust.
     /// 
     /// # Example
-    /// ```rust, no_run
+    /// ```rust
     /// use inkwell::{
     ///     orc::OrcEngine,
     ///     orc::function_address::FunctionAddress,
@@ -1086,33 +1290,38 @@ impl OrcEngine {
     /// pub unsafe extern "C" fn compiled_function_example() {
     ///     println!("Called the compiled function.");
     /// }
+    /// inkwell::targets::Target::initialize_native(&inkwell::targets::InitializationConfig::default())
+    ///     .expect("Failed to initialize native target");
     /// let engine = OrcEngine::new_default().expect("Failed to create OrcEngine.");
     /// let lazy_callback = engine.create_lazy_compile_callback(|engine: OrcEngine| {
     ///     fn_addr!(compiled_function_example)
     /// }).expect("Failed to create lazy compile callback.");
-    /// engine.register_function("my_lazy_callback", lazy_callback).expect("Failed to register function.");
+    /// engine.register_function("my_lazy_callback", lazy_callback);
     /// // now `my_lazy_callback` is a globally registered function. You
     /// // can now call the function in your JIT code in order to execute the lazy compiler.
     /// ```
     #[must_use]
     pub fn create_lazy_compile_callback<C: LazyCompiler>(&self, compiler: C) -> Result<FunctionAddress, OrcError> {
-        let lazy_compiler = LazyCompileCallback::new(self, compiler);
-        let node = LockfreeLinkedListNode::new(lazy_compiler);
-        // Add the callback node to the callbacks linked list to keep it alive while the OrcEngine is alive.
-        unsafe { self.inner.lazy_compile_callbacks.push(&node.next, &*node); }
-        let mut ret_addr = 0;
-        let err = unsafe {
-            LLVMOrcCreateLazyCompileCallback(
-                self.jit_stack_ref(),
-                &mut ret_addr,
-                Some(lazy_compile_callback),
-                Box::into_raw(node).cast(),
-            )
-        };
-        if !err.is_null() {
-            let err_string = unsafe { LLVMErrorString::new(err) };
-            return Err(OrcError::CreateLazyCompileCallbackFailure(err_string));
+        // I think this should reduce code bloat in cases where this function has many monomorphized variants.
+        fn inner(engine: &OrcEngine, lazy_compiler: LazyCompileCallback) -> Result<FunctionAddress, OrcError> {
+            let keep_alive = Box::new(lazy_compiler);
+            let mut ret_addr = 0;
+            let err = unsafe {
+                LLVMOrcCreateLazyCompileCallback(
+                    engine.jit_stack_ref(),
+                    &mut ret_addr,
+                    Some(lazy_compile_callback),
+                    &*keep_alive as *const _ as *mut _,
+                )
+            };
+            if !err.is_null() {
+                let err_string = unsafe { LLVMErrorString::new(err) };
+                return Err(OrcError::CreateLazyCompileCallbackFailure(err_string));
+            }
+            engine.keep_alive_boxed(keep_alive);
+            Ok(FunctionAddress(ret_addr))
         }
-        Ok(FunctionAddress(ret_addr))
+        let lazy_compiler = LazyCompileCallback::new(self, compiler);
+        inner(self, lazy_compiler)
     }
 }
