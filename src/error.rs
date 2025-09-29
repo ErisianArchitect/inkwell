@@ -31,6 +31,7 @@ pub enum AlignmentError {
 
 /// The top-level Error type for the inkwell crate.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[llvm_versioned_item]
 pub enum Error {
     #[error("Builder Error: {0}")]
     BuilderError(#[from] crate::builder::BuilderError),
@@ -40,28 +41,12 @@ pub enum Error {
     EmptyNameError,
     #[error("Metadata is expected to be a node.")]
     GlobalMetadataError,
-    #[cfg(any(
-        // TODO: When additional prior llvm versions are supported that contain the Orc API, update this cfg attribute.
-        feature = "llvm8-0",
-        feature = "llvm9-0",
-        feature = "llvm10-0",
-        feature = "llvm11-0",
-    ))]
+    // TODO: Update this when additional prior llvm versions are supported that contain the Orc API
+    #[llvm_versions(..=11)]
     #[error("OrcError: {0}")]
     OrcError(#[from] OrcError),
-    #[cfg(any(
-        feature = "llvm11-0",
-        feature = "llvm12-0",
-        feature = "llvm13-0",
-        feature = "llvm14-0",
-        feature = "llvm15-0",
-        feature = "llvm16-0",
-        feature = "llvm17-0",
-        feature = "llvm18-1",
-        feature = "llvm19-1",
-        feature = "llvm20-1",
-        // TODO: When additional future llvm versions are supported that contain the Orc2 API, update this cfg attribute.
-    ))]
+    // TODO: Update this when additional future llvm versions are supported that contain the Orc2 API
+    #[llvm_versions(11..=20.1)]
     #[error("Orc2Error: {0}")]
     Orc2Error(#[from] Orc2Error),
 }
