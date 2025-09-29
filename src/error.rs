@@ -51,6 +51,8 @@ pub enum Error {
     Orc2Error(#[from] Orc2Error),
 }
 
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
 struct LLVMErrorStringInner {
     cstr: *mut i8,
     len: usize,
