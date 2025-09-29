@@ -5,7 +5,7 @@ use llvm_sys::error::LLVMOpaqueError;
 use crate::{error::LLVMErrorString, orc::mangled_symbol::MangledSymbol, support::LLVMString};
 
 /// Handles an [LLVMOpaqueError] that was issued from LLVM.
-pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> Result<(), LLVMErrorString> {
+pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> std::result::Result<(), LLVMErrorString> {
     if opaque.is_null() {
         Ok(())
     } else {
@@ -35,17 +35,19 @@ pub enum OrcError {
     #[error("Failed to lookup symbol address: {0}")]
     SymbolAddressLookupFailure(LLVMErrorString),
     #[error("The given module name has already been used: {0:?}")]
-    RepeatModuleName(Box<str>),
+    RepeatModuleName(String),
+    #[error("Module name is reserved: \"{0}\"")]
+    ReservedModuleName(String),
     #[error("The module was already owned by an execution engine.")]
     ModuleOwnedByExecutionEngine,
     #[error("The module was not found: {0:?}")]
-    ModuleNotFound(Box<str>),
+    ModuleNotFound(String),
     #[error("A function by that mangled name has already been registered: {0:?}")]
     MangledFunctionAlreadyRegistered(MangledSymbol),
     #[error("A function by that name has already been registered: {0:?}")]
-    FunctionAlreadyRegistered(Box<str>),
+    FunctionAlreadyRegistered(String),
     #[error("Symbol was not found: {0:?}")]
-    SymbolNotFound(Box<str>),
+    SymbolNotFound(String),
     #[error("Failed to set indirect stub: {0}")]
     SetIndirectStubFailure(LLVMErrorString),
     #[error("Symbol Table not owned by Orc Engine.")]
@@ -58,4 +60,8 @@ pub enum OrcError {
     NulError(#[from] NulError),
     #[error("JIT is not supported for the given target.")]
     JITNotSupported,
+    #[error("Error: {0}")]
+    Custom(String)
 }
+
+pub type Result<T, E = OrcError> = std::result::Result<T, E>;

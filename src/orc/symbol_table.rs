@@ -25,9 +25,9 @@ impl GlobalSymbolTableInner {
 
 // TODOC (ErisianArchitect): struct GlobalSymbolTable
 #[repr(transparent)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct GlobalSymbolTable {
-    pub(crate) inner: Arc<GlobalSymbolTableInner>,
+    pub(crate) inner: Box<GlobalSymbolTableInner>,
 }
 
 // pub struct MultiInsert<'guard> {
@@ -39,7 +39,7 @@ impl GlobalSymbolTable {
     #[must_use]
     pub fn new(symbol_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>) -> Self {
         Self {
-            inner: Arc::new(GlobalSymbolTableInner { 
+            inner: Box::new(GlobalSymbolTableInner { 
                 table: RwLock::new(symbol_table),
             }),
         }
@@ -62,7 +62,7 @@ impl GlobalSymbolTable {
     #[must_use]
     #[inline]
     pub fn as_ptr(&self) -> *const GlobalSymbolTableInner {
-        self.inner.as_ref()
+        &*self.inner
     }
 }
 
@@ -82,11 +82,9 @@ impl LocalSymbolTableInner {
 
 // TODOC (ErisianArchitect): struct LocalSymbolTable
 #[repr(transparent)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct LocalSymbolTable {
-    // This doesn't need interior mutability, and in fact the LocalSymbolTable should be immutable, but this makes it
-    // easy to get a mutable pointer (`*mut LocalSymbolTableInner`) safely.
-    inner: Arc<LocalSymbolTableInner>,
+    inner: Box<LocalSymbolTableInner>,
 }
 
 // TODOC (ErisianArchitect): impl LocalSymbolTable
@@ -95,7 +93,7 @@ impl LocalSymbolTable {
     #[must_use]
     pub(crate) fn new(local_table: HashMap<MangledSymbol, LLVMOrcTargetAddress>) -> Self {
         Self {
-            inner: Arc::new(LocalSymbolTableInner {
+            inner: Box::new(LocalSymbolTableInner {
                 local_table,
             }),
         }
@@ -104,7 +102,7 @@ impl LocalSymbolTable {
     #[must_use]
     #[inline]
     pub(crate) unsafe fn as_ptr(&self) -> *const LocalSymbolTableInner {
-        Arc::as_ptr(&self.inner)
+        &*self.inner
     }
 }
 
@@ -130,11 +128,11 @@ impl<'jit> SymbolTable<'jit> {
         }
     }
     
-    pub fn register_many_mangled<It: IntoIterator<Item = (MangledSymbol, FunctionAddress)>>(&mut self, symbols: It) {
+    pub fn register_mangled_from_iter<It: IntoIterator<Item = (MangledSymbol, FunctionAddress)>>(&mut self, symbols: It) {
         self.symbols.extend(symbols.into_iter().map(|(mangled, addr)| (mangled, addr.0)));
     }
     
-    pub fn register_many<S: AsRef<str>, It: IntoIterator<Item = (S, FunctionAddress)>>(&mut self, symbols: It) {
+    pub fn register_from_iter<S: AsRef<str>, It: IntoIterator<Item = (S, FunctionAddress)>>(&mut self, symbols: It) {
         let jit_stack = self.jit_stack;
         self.symbols.extend(symbols.into_iter().map(move |(name, addr)| (
             unsafe { mangle_symbol(jit_stack, name.as_ref()) },
@@ -156,6 +154,16 @@ impl<'jit> SymbolTable<'jit> {
     pub fn register(&mut self, name: &str, address: FunctionAddress) -> Option<FunctionAddress> {
         let mangled_symbol = unsafe { mangle_symbol(self.jit_stack, name) };
         self.register_mangled(mangled_symbol, address)
+    }
+    
+    #[inline]
+    pub fn register_mangled_from_slice(&mut self, functions: &[(MangledSymbol, FunctionAddress)]) {
+        self.register_mangled_from_iter(functions.iter().cloned());
+    }
+    
+    #[inline]
+    pub fn register_from_slice<S: AsRef<str>>(&mut self, functions: &[(S, FunctionAddress)]) {
+        self.register_from_iter(functions.iter().map(|(name, function)| (name.as_ref(), *function)));
     }
     
     #[must_use]

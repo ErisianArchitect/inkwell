@@ -1,6 +1,6 @@
 
 
-use std::{ffi::c_void, pin::Pin, sync::{Arc, Mutex}};
+use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use llvm_sys::{error::LLVMErrorRef, orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress}};
 
@@ -40,8 +40,7 @@ impl<F: FnOnce(OrcEngine) -> FunctionAddress + Send + Sync + 'static> LazyCompil
 // Self-referential module builder type.
 #[derive(Debug)]
 pub struct ModuleBuilder {
-    // Pin to prevent the box from moving the memory.
-    pub(crate) context: Pin<Box<Context>>,
+    pub(crate) context: Box<Context>,
     // 'static lifetime even though it will only live as long as the context.
     // access given externally will fix the lifetime.
     pub(crate) module: Module<'static>,
@@ -50,7 +49,7 @@ pub struct ModuleBuilder {
 
 impl ModuleBuilder {
     pub fn new(module_name: &str) -> Self {
-        let context = Box::pin(Context::create());
+        let context = Box::new(Context::create());
         let module = context.create_module(module_name);
         let builder = context.create_builder();
         Self {
@@ -80,21 +79,15 @@ impl ModuleBuilder {
 }
 
 pub trait LazyModuleBuilder {
-    fn build(self: Box<Self>, engine: OrcEngine, compiler: ModuleBuilder);
+    fn build(self: Box<Self>, engine: OrcEngine, compiler: &ModuleBuilder);
 }
 
 // pub struct LazyModuleBuilder {
     
 // }
 
-// pub struct Compiler<'ctx> {
-//     context: &'ctx Context,
-//     module: Module<'ctx>,
-//     builder: Builder<'ctx>,
-// }
-
 #[repr(transparent)]
-pub struct LazyCompileCallback {
+pub(crate) struct LazyCompileCallback {
     // The idea is that the LazyCompiler will only be used a single time, but may not be used at all.
     // So the LazyCompileCallback lives inside of the OrcEngine that it is registered to, and also carries its own
     // weak reference to the OrcEngineInner. This prevents a cycle that would cause a leak.
@@ -114,17 +107,18 @@ impl LazyCompileCallback {
     
     fn compile(&self) -> FunctionAddress {
         let mut callback_guard = self.callback.lock().unwrap();
-        if let Some((weak_engine, callback)) = callback_guard.take() {
-            let Some(strong_engine) = weak_engine.upgrade() else {
-                return FunctionAddress::NULL;
-            };
-            let engine = OrcEngine {
-                inner: strong_engine
-            };
-            callback.compile(engine)
-        } else {
-            FunctionAddress::NULL
-        }
+        let Some((weak_engine, callback)) = callback_guard.take() else {
+            eprintln!("Error: (LazyCompileCallback::compile) Lazy Compile Callback already used.");
+            return FunctionAddress::NULL;
+        };
+        let Some(strong_engine) = weak_engine.upgrade() else {
+            eprintln!("Error: (LazyCompileCallback::compile) Unable to upgrade `weak_engine` to strong reference.");
+            return FunctionAddress::NULL;
+        };
+        let engine = OrcEngine {
+            inner: strong_engine
+        };
+        callback.compile(engine)
     }
 }
 

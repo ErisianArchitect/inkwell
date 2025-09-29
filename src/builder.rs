@@ -99,6 +99,7 @@ pub enum BuilderError {
     ExtractOutOfRange,
     #[error("The bitwidth of value must be a power of 2 and greater than or equal to 8.")]
     BitwidthError,
+    #[cfg(feature = "typed-pointers")]
     #[error("Pointee type does not match the value's type")]
     PointeeTypeMismatch,
     #[error("Values must have the same type")]
