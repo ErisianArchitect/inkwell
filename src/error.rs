@@ -7,8 +7,6 @@ use llvm_sys::error::{LLVMDisposeErrorMessage, LLVMGetErrorMessage, LLVMOpaqueEr
 //       LLVM Orc V3 is ever created.
 #[llvm_versions(..=11)]
 use crate::orc::error::OrcError;
-#[llvm_versions(11..=20.1)]
-use crate::orc2::error::Orc2Error;
 
 
 /// Errors for operations involving alignment.
@@ -46,21 +44,6 @@ pub enum Error {
     ))]
     #[error("OrcError: {0}")]
     OrcError(#[from] OrcError),
-    // TODO: Update this when additional future llvm versions are supported that contain the Orc2 API
-    #[cfg(any(
-        feature = "llvm11-0",
-        feature = "llvm12-0",
-        feature = "llvm13-0",
-        feature = "llvm14-0",
-        feature = "llvm15-0",
-        feature = "llvm16-0",
-        feature = "llvm17-0",
-        feature = "llvm18-1",
-        feature = "llvm19-1",
-        feature = "llvm20-1",
-    ))]
-    #[error("Orc2Error: {0}")]
-    Orc2Error(#[from] Orc2Error),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
