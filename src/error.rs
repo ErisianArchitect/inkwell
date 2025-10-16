@@ -1,4 +1,4 @@
-use std::{ffi::CStr, sync::Arc};
+use std::{ffi::CStr, rc::Rc};
 
 use llvm_sys::error::{LLVMDisposeErrorMessage, LLVMGetErrorMessage, LLVMOpaqueError};
 
@@ -96,7 +96,7 @@ impl LLVMErrorStringInner {
 // TODOC (ErisianArchitect): struct LLVMErrorString
 #[derive(Clone)]
 pub struct LLVMErrorString {
-    inner: Arc<LLVMErrorStringInner>,
+    inner: Rc<LLVMErrorStringInner>,
 }
 
 // TODOC (ErisianArchitect): impl LLVMErrorString
@@ -111,7 +111,7 @@ impl LLVMErrorString {
         debug_assert!(!cstr.is_null(), "Returned error message was null.");
         let len = libc::strlen(cstr);
         Self {
-            inner: Arc::new(LLVMErrorStringInner {
+            inner: Rc::new(LLVMErrorStringInner {
                 cstr,
                 len,
             })
@@ -174,10 +174,6 @@ impl PartialEq<LLVMErrorString> for LLVMErrorString {
     fn eq(&self, other: &LLVMErrorString) -> bool {
         std::ptr::eq(self.inner.cstr, other.inner.cstr) || self.to_str() == other.to_str()
     }
-    
-    fn ne(&self, other: &LLVMErrorString) -> bool {
-        !std::ptr::eq(self.inner.cstr, other.inner.cstr) && self.to_str() != other.to_str()
-    }
 }
 
 impl Eq for LLVMErrorString {}
@@ -186,19 +182,11 @@ impl PartialEq<str> for LLVMErrorString {
     fn eq(&self, other: &str) -> bool {
         self.to_str() == other
     }
-
-    fn ne(&self, other: &str) -> bool {
-        self.to_str() != other
-    }
 }
 
 impl PartialEq<CStr> for LLVMErrorString {
     fn eq(&self, other: &CStr) -> bool {
         std::ptr::eq(self.inner.cstr, other.as_ptr()) || self.to_cstr() == other
-    }
-
-    fn ne(&self, other: &CStr) -> bool {
-        !std::ptr::eq(self.inner.cstr, other.as_ptr()) && self.to_cstr() != other
     }
 }
 
