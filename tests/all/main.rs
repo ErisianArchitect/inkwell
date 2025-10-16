@@ -16,6 +16,13 @@ mod test_intrinsics;
 mod test_listeners;
 mod test_module;
 mod test_object_file;
+#[cfg(any(
+    feature = "llvm8-0",
+    feature = "llvm9-0",
+    feature = "llvm10-0",
+    feature = "llvm11-0",
+))]
+mod test_orc;
 #[cfg(not(any(
     feature = "llvm17-0",
     feature = "llvm18-1",
