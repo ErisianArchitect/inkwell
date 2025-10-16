@@ -1,13 +1,12 @@
 use llvm_sys::prelude::LLVMJITEventListenerRef;
 
-// TODOC (ErisianArchitect): struct JitEventListener
+/// [LLVMJITEventListenerRef] singleton wrapper.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct JitEventListener {
     pub(crate) raw: LLVMJITEventListenerRef,
 }
 
-// TODO (ErisianArchitect): impl JitEventListener
 impl JitEventListener {
     /// The raw [LLVMJITEventListenerRef].
     #[must_use]
