@@ -1,19 +1,8 @@
 use std::ffi::NulError;
 
-use llvm_sys::error::LLVMOpaqueError;
-
 use crate::{error::LLVMErrorString, orc::mangled_symbol::MangledSymbol, support::LLVMString};
 
-/// Handles an [LLVMOpaqueError] that was issued from LLVM.
-pub fn handle_llvm_error_message(opaque: *mut LLVMOpaqueError) -> std::result::Result<(), LLVMErrorString> {
-    if opaque.is_null() {
-        Ok(())
-    } else {
-        Err(unsafe { LLVMErrorString::new(opaque) })
-    }
-}
-
-// TODOC (ErisianArchitect): enum OrcError
+/// The error type used by the inkwell Orc JIT V1.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum OrcError {
     #[error("Failed to create Orc JIT engine.")]
@@ -40,6 +29,8 @@ pub enum OrcError {
     ReservedModuleName(String),
     #[error("The module was already owned by an execution engine.")]
     ModuleOwnedByExecutionEngine,
+    #[error("Module not created from context.")]
+    ModuleNotCreatedByContext,
     #[error("The module was not found: {0:?}")]
     ModuleNotFound(String),
     #[error("A function by that mangled name has already been registered: {0:?}")]
