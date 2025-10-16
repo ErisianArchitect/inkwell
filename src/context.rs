@@ -35,6 +35,7 @@ use llvm_sys::ir_reader::LLVMParseIRInContext;
 use llvm_sys::prelude::{LLVMContextRef, LLVMDiagnosticInfoRef, LLVMTypeRef, LLVMValueRef};
 use llvm_sys::target::{LLVMIntPtrTypeForASInContext, LLVMIntPtrTypeInContext};
 use once_cell::sync::Lazy;
+use std::rc::Rc;
 use std::sync::{Mutex, MutexGuard};
 
 use crate::attributes::Attribute;
@@ -403,13 +404,35 @@ impl ContextImpl {
 
 impl PartialEq<Context> for ContextRef<'_> {
     fn eq(&self, other: &Context) -> bool {
-        self.context == other.context
+        self.context.0 == other.context.0.0
     }
 }
 
 impl PartialEq<ContextRef<'_>> for Context {
     fn eq(&self, other: &ContextRef<'_>) -> bool {
-        self.context == other.context
+        self.context.0.0 == other.context.0
+    }
+}
+
+// In order to safely handle dropping of the Context.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ContextLife(ContextImpl);
+
+unsafe impl Send for ContextLife {}
+
+impl std::ops::Deref for ContextLife {
+    type Target = ContextImpl;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for ContextLife {
+    fn drop(&mut self) {
+        unsafe {
+            LLVMContextDispose(self.0.0);
+        }
     }
 }
 
@@ -419,7 +442,8 @@ impl PartialEq<ContextRef<'_>> for Context {
 /// can, however, execute on different threads simultaneously according to the LLVM docs.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Context {
-    pub(crate) context: ContextImpl,
+    // By placing the ContextImpl inside of ContextLife, we can manage dropping of the Context when the Arc is dropped.
+    pub(crate) context: Rc<ContextLife>,
 }
 
 unsafe impl Send for Context {}
@@ -430,7 +454,7 @@ impl Context {
     /// This function is exposed only for interoperability with other LLVM IR libraries.
     /// It's not intended to be used by most users.
     pub fn raw(&self) -> LLVMContextRef {
-        self.context.0
+        self.context.0.0
     }
 
     /// Creates a new `Context` from [`LLVMContextRef`].
@@ -442,7 +466,7 @@ impl Context {
     /// Use [`Context::create`] instead.
     pub unsafe fn new(context: LLVMContextRef) -> Self {
         Context {
-            context: ContextImpl::new(context),
+            context: Rc::new(ContextLife(ContextImpl::new(context))),
         }
     }
 
@@ -1308,14 +1332,6 @@ impl Context {
     }
 }
 
-impl Drop for Context {
-    fn drop(&mut self) {
-        unsafe {
-            LLVMContextDispose(self.context.0);
-        }
-    }
-}
-
 /// A `ContextRef` is a smart pointer allowing borrowed access to a type's `Context`.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ContextRef<'ctx> {
@@ -2167,7 +2183,7 @@ pub unsafe trait AsContextRef<'ctx> {
 unsafe impl<'ctx> AsContextRef<'ctx> for &'ctx Context {
     /// Acquires the underlying raw pointer belonging to this `Context` type.
     fn as_ctx_ref(&self) -> LLVMContextRef {
-        self.context.0
+        self.context.0.0
     }
 }
 
