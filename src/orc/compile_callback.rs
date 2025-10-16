@@ -4,9 +4,9 @@ use std::{ffi::c_void, sync::{Arc, Mutex}};
 
 use llvm_sys::{error::LLVMErrorRef, orc::{LLVMOrcJITStackRef, LLVMOrcTargetAddress}};
 
-use crate::{builder::Builder, context::Context, module::Module, orc::{
+use crate::orc::{
     function_address::FunctionAddress, OrcEngine, OrcEngineInner,
-}};
+};
 
 // llvm-sys has an incorrect definition for LLVMOrcLazyCompileCallbackFn, so there needs to be a correct definition for
 // LLVMOrcCreateLazyCompileCallback to work.
@@ -25,66 +25,18 @@ extern "C" {
     ) -> LLVMErrorRef;
 }
 
-// TODOC (ErisianArchitect): trait LazyCompiler
+/// A trait for lazy compilation in the [OrcEngine].
 pub trait LazyCompiler: Send + Sync + 'static {
-    // Should return FunctionAddress::NULL if compilation fails.
+    /// Compiles the function for the given [OrcEngine]. Should return [FunctionAddress::NULL] on failure.
     fn compile(self: Box<Self>, engine: OrcEngine) -> FunctionAddress;
 }
 
 impl<F: FnOnce(OrcEngine) -> FunctionAddress + Send + Sync + 'static> LazyCompiler for F {
+    #[inline(always)]
     fn compile(self: Box<Self>, engine: OrcEngine) -> FunctionAddress {
         self(engine)
     }
 }
-
-// Self-referential module builder type.
-#[derive(Debug)]
-pub struct ModuleBuilder {
-    pub(crate) context: Box<Context>,
-    // 'static lifetime even though it will only live as long as the context.
-    // access given externally will fix the lifetime.
-    pub(crate) module: Module<'static>,
-    pub(crate) builder: Builder<'static>,
-}
-
-impl ModuleBuilder {
-    pub fn new(module_name: &str) -> Self {
-        let context = Box::new(Context::create());
-        let module = context.create_module(module_name);
-        let builder = context.create_builder();
-        Self {
-            module: unsafe { std::mem::transmute(module) },
-            builder: unsafe { std::mem::transmute(builder) },
-            context,
-        }
-    }
-    
-    #[must_use]
-    #[inline]
-    pub fn context(&self) -> &Context {
-        &self.context
-    }
-    
-    #[must_use]
-    #[inline]
-    pub fn module<'ctx>(&'ctx self) -> &'ctx Module<'ctx> {
-        unsafe { std::mem::transmute(&self.module) }
-    }
-    
-    #[must_use]
-    #[inline]
-    pub fn builder<'ctx>(&'ctx self) -> &'ctx Builder<'ctx> {
-        unsafe { std::mem::transmute(&self.builder) }
-    }
-}
-
-pub trait LazyModuleBuilder {
-    fn build(self: Box<Self>, engine: OrcEngine, compiler: &ModuleBuilder);
-}
-
-// pub struct LazyModuleBuilder {
-    
-// }
 
 #[repr(transparent)]
 pub(crate) struct LazyCompileCallback {
@@ -105,6 +57,7 @@ impl LazyCompileCallback {
         }
     }
     
+    /// Performs lazy compilation, then returns the [FunctionAddress] for the compiled function.
     fn compile(&self) -> FunctionAddress {
         let mut callback_guard = self.callback.lock().unwrap();
         let Some((weak_engine, callback)) = callback_guard.take() else {
@@ -128,7 +81,7 @@ impl std::fmt::Debug for LazyCompileCallback {
     }
 }
 
-// TODOC (ErisianArchitect): fn lazy_compile_callback
+/// The `extern "C"` function used for lazy compilation.
 pub(crate) extern "C" fn lazy_compile_callback(
     // NOTE: This is unused because we need access to the OrcEngine, which lives inside the LazyCompileCallback.
     // Consider using a mutable static to store a hashmap of <LLVMOrcJITStackRef, std::sync::Weak<OrcEngine>> to
