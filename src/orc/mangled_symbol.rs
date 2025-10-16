@@ -1,10 +1,10 @@
-use std::{ffi::{CStr, CString}, sync::Arc};
+use std::{ffi::{CStr, CString}, rc::Rc};
 use libc::{c_char, strlen};
 use llvm_sys::orc::{LLVMOrcDisposeMangledSymbol, LLVMOrcGetMangledSymbol, LLVMOrcJITStackRef};
 
 use crate::support::to_c_str;
 
-// TODOC (ErisianArchitect): mangle_symbol()
+/// Safely mangles a name with the given `jit_stack`.
 #[must_use]
 #[inline]
 pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) -> MangledSymbol {
@@ -14,6 +14,7 @@ pub(crate) unsafe fn mangle_symbol(jit_stack: LLVMOrcJITStackRef, name: &str) ->
     MangledSymbol::from_mangled_cstr(symbol)
 }
 
+/// Internal [MangledSymbol] struct for easy disposal using [Drop].
 pub(crate) struct MangledSymbolInner {
     c_str: *mut c_char,
     // len is a measure of the string length without the null terminator.
@@ -21,14 +22,15 @@ pub(crate) struct MangledSymbolInner {
     len: usize,
 }
 
-// TODOC (ErisianArchitect): struct MangledSymbol
+/// A pre-mangled name for a symbol (function).
 #[derive(Clone)]
 pub struct MangledSymbol {
-    pub(crate) symbol: Arc<MangledSymbolInner>,
+    pub(crate) symbol: Rc<MangledSymbolInner>,
 }
 
-// TODOC (ErisianArchitect): impl MangledSymbol
 impl MangledSymbol {
+    /// Create a [MangledSymbol] from a C string. The [MangledSymbol] will take ownership of the C string. This
+    /// function expects that you do not attempt to free the `mangled_cstr`.
     #[must_use]
     #[inline]
     pub(crate) unsafe fn from_mangled_cstr(mangled_cstr: *mut c_char) -> Self {
@@ -37,10 +39,11 @@ impl MangledSymbol {
         // a valid UTF-8 C string.
         let len = strlen(mangled_cstr);
         Self {
-            symbol: Arc::new(MangledSymbolInner { c_str: mangled_cstr, len }),
+            symbol: Rc::new(MangledSymbolInner { c_str: mangled_cstr, len }),
         }
     }
     
+    /// The length of the [MangledSymbol].
     #[must_use]
     #[inline]
     pub fn len(&self) -> usize {
@@ -49,12 +52,20 @@ impl MangledSymbol {
     
     #[must_use]
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    
+    /// Returns the [MangledSymbol] as a string slice.
+    #[must_use]
+    #[inline]
     pub fn to_str(&self) -> &str {
         // SAFETY: symbol is valid UTF-8 string, and the len has already been calculated in `MangledSymbol::new`.
         let byte_slice = unsafe { std::slice::from_raw_parts(self.symbol.c_str.cast::<u8>(), self.symbol.len) };
         unsafe { str::from_utf8_unchecked(byte_slice) }
     }
     
+    /// Returns the [MangledSymbol] as a [CStr].
     #[must_use]
     #[inline]
     pub fn to_cstr(&self) -> &CStr {
@@ -64,6 +75,7 @@ impl MangledSymbol {
         unsafe { CStr::from_bytes_with_nul_unchecked(bytes) }
     }
     
+    /// Returns the raw pointer to the [MangledSymbol].
     #[must_use]
     #[inline]
     pub fn as_ptr(&self) -> *const c_char {
@@ -118,11 +130,6 @@ impl std::cmp::PartialEq<MangledSymbol> for MangledSymbol {
     fn eq(&self, other: &MangledSymbol) -> bool {
         self.symbol.c_str == other.symbol.c_str || self.to_str() == other.to_str()
     }
-    
-    #[inline]
-    fn ne(&self, other: &MangledSymbol) -> bool {
-        self.symbol.c_str != other.symbol.c_str || self.to_str() != other.to_str()
-    }
 }
 
 impl std::cmp::PartialEq<str> for MangledSymbol {
@@ -130,22 +137,12 @@ impl std::cmp::PartialEq<str> for MangledSymbol {
     fn eq(&self, other: &str) -> bool {
         self.to_str() == other
     }
-    
-    #[inline]
-    fn ne(&self, other: &str) -> bool {
-        self.to_str() != other
-    }
 }
 
 impl std::cmp::PartialEq<String> for MangledSymbol {
     #[inline]
     fn eq(&self, other: &String) -> bool {
         self.to_str() == other
-    }
-    
-    #[inline]
-    fn ne(&self, other: &String) -> bool {
-        self.to_str() != other
     }
 }
 
