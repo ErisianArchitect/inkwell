@@ -4,7 +4,6 @@ use llvm_sys::orc::LLVMOrcTargetAddress;
 
 use crate::orc::orc_jit_fn::UnsafeOrcFn;
 
-// NOTE: FunctionAddress must be repr(transparent) to ensure that it is interchangeable with LLVMOrcTargetAddress.
 /// A safe function address wrapper. [FunctionAddress] can easily be created using the `fn_addr!` macro.
 /// 
 /// # Example
@@ -25,13 +24,12 @@ use crate::orc::orc_jit_fn::UnsafeOrcFn;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionAddress(pub(crate) LLVMOrcTargetAddress);
 
-// SAFETY: LLVMOrcTargetAddress should just be a primitive type, and should be safe to send across thread boundaries.
-//         These traits might be auto-implemented, but I figured it would be a good idea to force their implementation
-//         just in case.
+// LLVMOrcTargetAddress should just be a primitive type, and should be safe to send across thread boundaries.
+// These traits might be auto-implemented, but I figured it would be a good idea to force their implementation
+// just in case.
 unsafe impl Send for FunctionAddress {}
 unsafe impl Sync for FunctionAddress {}
 
-// TODOC (ErisianArchitect): impl FunctionAddress
 impl FunctionAddress {
     /// Null [FunctionAddress] (address of zero).
     pub const NULL: Self = Self(0);
@@ -53,6 +51,10 @@ impl FunctionAddress {
         Self(address)
     }
     
+    /// Create a new [FunctionAddress] from the given function.
+    /// # Note
+    /// It is not advised to use this function directly to create a [FunctionAddress]. Instead, you should use the
+    /// [fn_addr] macro.
     #[must_use]
     #[inline]
     pub fn new<F: UnsafeOrcFn>(function: F) -> Self {
@@ -73,9 +75,11 @@ impl FunctionAddress {
 /// Utility macro to create a [FunctionAddress] with less verbosity. This handles the coercion for you.
 /// 
 /// # Syntax
-/// `fn_addr!($function:path : ( $( $param_type:ty ),* ) $( -> $return_type:ty )?)`
+/// ```rust
+/// fn_addr!($function:path : ( $( $param_type:ty ),* ) $( -> $return_type:ty )?)
+/// ```
 /// # Example
-/// ```rust, no_run
+/// ```rust
 /// use inkwell::orc::{OrcEngine, function_address::FunctionAddress};
 /// use inkwell::fn_addr;
 /// pub mod jit_functions {
@@ -89,8 +93,6 @@ impl FunctionAddress {
 /// }
 /// 
 /// // in fn main()
-/// 
-/// let engine: OrcEngine = OrcEngine::new_default().expect("Failed to create OrcEngine.");
 /// 
 /// let add_addr0 = fn_addr!(jit_functions::add : (i32, i32) -> i32);
 /// // optionally, you can include `fn`, `extern "C" fn`, or `unsafe extern "C" fn` before the parameter list:
