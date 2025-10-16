@@ -4,8 +4,10 @@ mod private {
     pub trait SealedUnsafeOrcJitFnPtr: Copy {}
 }
 
+/// Sealed trait applied to `unsafe extern "C"` functions of various signatures.
 pub trait UnsafeOrcFn: private::SealedUnsafeOrcJitFnPtr {}
 
+/// Wrapper around `unsafe extern "C"` functions.
 #[derive(Debug, Clone)]
 pub struct OrcFunction<'ctx, F> {
     inner: F,
@@ -57,6 +59,11 @@ impl_unsafe_fn!(
     T24, T25, T26, T27, T28, T29, T30, T31
 );
 
+/// Used to create an `OrcFunction` type.
+/// # Example
+/// ```rust
+/// type BinaryFunction<T0, T1, R> = orc_fn!(fn(T0, T1) -> R);
+/// ```
 #[macro_export]
 macro_rules! orc_fn {
     (fn($($param:ty),*$(,)?)$( -> $result:ty)?) => {
