@@ -33,8 +33,10 @@ pub type JITTargetMachineBuilderNonNull = NonNull<LLVMOrcOpaqueJITTargetMachineB
 pub struct JITTargetMachineBuilder {
     ptr: JITTargetMachineBuilderNonNull,
 }
+const _: () = crate::support::assert_niche::<JITTargetMachineBuilder>();
 
 impl JITTargetMachineBuilder {
+    /// Create a [JITTargetMachineBuilder] from a [TargetMachine]. This will take ownership of the [TargetMachine].
     pub fn create_from_target_machine(target_machine: TargetMachine) -> Self {
         // This function takes ownership of the target machine.
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga60a76da97b1229d5303eff475fb9a8e8]
@@ -54,7 +56,10 @@ impl JITTargetMachineBuilder {
             }
         }
     }
-    
+
+    /// Returns the inner [LLVMOrcJITTargetMachineBuilderRef].
+    ///
+    /// NOTE: [JITTargetMachineBuilder] is a transparent wrapper around this pointer.
     #[must_use]
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcJITTargetMachineBuilderRef {
