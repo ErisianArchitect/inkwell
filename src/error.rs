@@ -10,6 +10,8 @@ use ::llvm_sys::{
         LLVMOpaqueError,
         LLVMErrorRef,
         LLVMConsumeError,
+        LLVMErrorTypeId,
+        LLVMGetErrorTypeId,
     },
 };
 
@@ -44,6 +46,7 @@ pub enum Error {
     GlobalMetadataError,
 }
 
+// [https://llvm.org/doxygen/classllvm_1_1Error.html]
 /// Internal LLVM error type with context and mandatory checking.
 /// 
 /// NOTE: This is a transparent wrapper around a non-null version of [LLVMErrorRef].
@@ -68,13 +71,23 @@ impl LLVMError {
     pub fn as_ptr(&self) -> LLVMErrorRef {
         self.ptr.as_ptr()
     }
+
+    /// Consume the error, effectively ignoring it.
+    ///
+    /// This simply drops the [LLVMError], which calls [LLVMConsumeError].
+    pub fn consume(self) {}
+
+    pub fn get_type_id(&self) -> LLVMErrorTypeId {
+        unsafe {
+            LLVMGetErrorTypeId(self.as_ptr())
+        }
+    }
 }
 
 impl Drop for LLVMError {
     fn drop(&mut self) {
-        let ptr = self.as_ptr();
         unsafe {
-            LLVMConsumeError(ptr);
+            LLVMConsumeError(self.as_ptr());
         }
     }
 }
