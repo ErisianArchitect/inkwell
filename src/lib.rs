@@ -36,6 +36,19 @@ pub mod memory_manager;
 #[deny(missing_docs)]
 pub mod module;
 pub mod object_file;
+#[cfg(any(
+    feature = "llvm12-0",
+    feature = "llvm13-0",
+    feature = "llvm14-0",
+    feature = "llvm15-0",
+    feature = "llvm16-0",
+    feature = "llvm17-0",
+    feature = "llvm18-1",
+    feature = "llvm19-1",
+    feature = "llvm20-1",
+    feature = "llvm21-1",
+    feature = "llvm22-1",
+))]
 pub mod orc2;
 pub mod passes;
 pub mod targets;
