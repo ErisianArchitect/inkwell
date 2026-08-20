@@ -24,6 +24,7 @@ pub type LLJITBuilderRefNonNull = NonNull<LLVMOrcOpaqueLLJITBuilder>;
 pub struct LLJITBuilder {
     ptr: LLJITBuilderRefNonNull,
 }
+const _: () = crate::support::assert_niche::<LLJITBuilder>();
 
 /* STRUCT LLJITBuilder:
 Important Functions:
@@ -41,7 +42,9 @@ impl LLJITBuilder {
         }
     }
     
-    /// Returns
+    /// Returns the inner [LLVMOrcLLJITBuilderRef].
+    ///
+    /// NOTE: [LLJITBuilder] is a transparent wrapper around this pointer.
     #[must_use]
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcLLJITBuilderRef {
