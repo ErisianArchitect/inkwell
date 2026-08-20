@@ -1,3 +1,18 @@
+
+use ::core::{
+    ptr::{
+        NonNull,
+    },
+};
+
+use ::llvm_sys::{
+    error::{
+        LLVMOpaqueError,
+        LLVMErrorRef,
+        LLVMConsumeError,
+    },
+};
+
 /// Errors for operations involving alignment.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AlignmentError {
@@ -27,4 +42,39 @@ pub enum Error {
     EmptyNameError,
     #[error("Metadata is expected to be a node.")]
     GlobalMetadataError,
+}
+
+/// Internal LLVM error type with context and mandatory checking.
+/// 
+/// NOTE: This is a transparent wrapper around a non-null version of [LLVMErrorRef].
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct LLVMError {
+    ptr: NonNull<LLVMOpaqueError>,
+}
+const _: () = crate::support::assert_niche::<LLVMError>();
+
+impl LLVMError {
+    pub fn from_error_ref(error: LLVMErrorRef) -> Option<Self> {
+        NonNull::new(error)
+            .map(|ptr| Self { ptr })
+    }
+
+    /// Returns the inner [LLVMErrorRef].
+    ///
+    /// NOTE: [LLVMErrorRef] is a transparent wrapper around this pointer.
+    #[must_use]
+    #[inline(always)]
+    pub fn as_ptr(&self) -> LLVMErrorRef {
+        self.ptr.as_ptr()
+    }
+}
+
+impl Drop for LLVMError {
+    fn drop(&mut self) {
+        let ptr = self.as_ptr();
+        unsafe {
+            LLVMConsumeError(ptr);
+        }
+    }
 }
