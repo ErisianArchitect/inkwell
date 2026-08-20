@@ -276,6 +276,11 @@ pub(crate) const fn assert_niche<T>() {
     const_assert(size_of::<T>() == size_of::<Option<T>>() && align_of::<T>() == align_of::<Option<T>>());
 }
 
+/// Panic when it has been determined that the system is out of memory.
+pub(crate) fn panic_out_of_memory_error(file: &str, line: u32, msg: &str) -> ! {
+    panic!("Out of Memory: {msg}\nFile: {file}:{line}");
+}
+
 #[test]
 fn test_to_c_str() {
     assert_eq!(to_c_str("my string"), Cow::<CStr>::Owned(c"my string".to_owned()));
