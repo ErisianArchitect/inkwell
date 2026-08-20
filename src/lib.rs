@@ -36,6 +36,7 @@ pub mod memory_manager;
 #[deny(missing_docs)]
 pub mod module;
 pub mod object_file;
+pub mod orc2;
 pub mod passes;
 pub mod targets;
 pub mod types;
