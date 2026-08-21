@@ -2,6 +2,9 @@ use ::core::{
     ptr::{
         NonNull,
     },
+    mem::{
+        ManuallyDrop,
+    },
 };
 
 use ::llvm_sys::{
@@ -11,6 +14,15 @@ use ::llvm_sys::{
         LLVMOrcDisposeLLJITBuilder,
         LLVMOrcLLJITBuilderRef,
         LLVMOrcOpaqueLLJITBuilder,
+        LLVMOrcLLJITBuilderSetJITTargetMachineBuilder,
+    },
+};
+
+use crate::{
+    orc2::{
+        target_machine::{
+            JITTargetMachineBuilder,
+        },
     },
 };
 
@@ -52,6 +64,18 @@ impl LLJITBuilder {
         //       const.
         self.ptr.as_ptr()
     }
+
+    /// Set the [JITTargetMachineBuilder] for creation of the LLJIT instance.
+    ///
+    /// This function is optional, and by omitting it, [LLJITBuilder] will use [JITTargetMachineBuilder::detect_host]
+    /// instead.
+    pub fn set_target_machine_builder(&mut self, builder: JITTargetMachineBuilder) {
+        let builder = ManuallyDrop::new(builder);
+        unsafe {
+            LLVMOrcLLJITBuilderSetJITTargetMachineBuilder(self.as_ptr(), builder.as_ptr());
+        }
+    }
+
 }
 
 impl Drop for LLJITBuilder {
