@@ -1,6 +1,7 @@
 
 use ::core::{
     ptr::{
+        self,
         NonNull,
     },
     mem::{
@@ -14,11 +15,13 @@ use ::llvm_sys::{
         LLVMOrcOpaqueJITTargetMachineBuilder,
         LLVMOrcJITTargetMachineBuilderRef,
         LLVMOrcDisposeJITTargetMachineBuilder,
+        LLVMOrcJITTargetMachineBuilderDetectHost,
     },
 };
 
 use crate::{
     targets::TargetMachine,
+    error::{LLVMError},
 };
 
 
@@ -64,6 +67,24 @@ impl JITTargetMachineBuilder {
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcJITTargetMachineBuilderRef {
         self.ptr.as_ptr()
+    }
+
+    // [https://llvm.org/doxygen/classllvm_1_1orc_1_1JITTargetMachineBuilder.html#aa67d14db111b10a6a09cb70fa5f4e084]
+    /// Attempt to create a [JITTargetMachineBuilder] for the host system.
+    pub fn detect_host() -> Result<Self, LLVMError> {
+        let mut builder = ptr::null_mut();
+        unsafe {
+            let result = LLVMError::from_error_ref(LLVMOrcJITTargetMachineBuilderDetectHost(&mut builder));
+            if let Some(error) = result {
+                return Err(error);
+            }
+            let Some(ptr) = NonNull::new(builder) else {
+                crate::support::panic_out_of_memory_error(file!(), line!(), "Attempt to detect host failed.");
+            };
+            Ok(Self {
+                ptr,
+            })
+        }
     }
 }
 
