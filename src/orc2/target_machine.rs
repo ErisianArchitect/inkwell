@@ -24,6 +24,7 @@ use ::llvm_sys::{
 use crate::{
     targets::{TargetMachine, TargetTriple},
     error::{LLVMError},
+    support::{LLVMString},
 };
 
 
@@ -100,7 +101,20 @@ impl JITTargetMachineBuilder {
         }
     }
 
-    // TODO: get_target_triple() | LLVMJITTargetMachineBuilderGetTargetTriple
+    /// Get the [TargetTriple] for this [JITTargetMachineBuilder].
+    pub fn get_target_triple(&self) -> TargetTriple {
+        // LLMVOrcJITTargetMachineBuilderGetTargetTriple will create a new TargetTriple string.
+        // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html] (line 801)
+        unsafe {
+            let ptr = LLVMOrcJITTargetMachineBuilderGetTargetTriple(self.as_ptr());
+            let Some(ptr) = NonNull::new(ptr) else {
+                crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to get TargetTriple.");
+            };
+            TargetTriple {
+                triple: LLVMString { ptr },
+            }
+        }
+    }
 }
 
 impl Drop for JITTargetMachineBuilder {
