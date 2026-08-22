@@ -28,16 +28,12 @@ use crate::{
 };
 
 
-/// A [NonNull] variant that wraps [LLVMOrcOpaqueJITTargetMachineBuilder], which is the equivalent of a non-null
-/// [LLVMOrcJITTargetMachineBuilderRef].
-pub type JITTargetMachineBuilderNonNull = NonNull<LLVMOrcOpaqueJITTargetMachineBuilder>;
-
 // [https://llvm.org/doxygen/classllvm_1_1orc_1_1JITTargetMachineBuilder.html]
 /// A utility struct for constructing JIT Target Machines.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct JITTargetMachineBuilder {
-    ptr: JITTargetMachineBuilderNonNull,
+    ptr: NonNull<LLVMOrcOpaqueJITTargetMachineBuilder>,
 }
 const _: () = crate::support::assert_niche::<JITTargetMachineBuilder>();
 
