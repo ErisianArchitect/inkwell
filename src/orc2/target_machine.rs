@@ -91,11 +91,16 @@ impl JITTargetMachineBuilder {
 
     /// Sets the [TargetTriple] of the [JITTargetMachineBuilder].
     pub fn set_target_triple(&mut self, triple: &TargetTriple) {
+        // SetTargetTriple does not take ownership of the `triple` string.
+        // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html] (line 809)
+        // [https://llvm.org/doxygen/Triple_8h_source.html] (line 462)
         let triple_t_cstr = triple.as_str();
         unsafe {
             LLVMOrcJITTargetMachineBuilderSetTargetTriple(self.as_ptr(), triple_t_cstr.as_ptr());
         }
     }
+
+    // TODO: get_target_triple() | LLVMJITTargetMachineBuilderGetTargetTriple
 }
 
 impl Drop for JITTargetMachineBuilder {
