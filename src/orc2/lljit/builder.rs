@@ -34,11 +34,6 @@ pub struct LLJITBuilder {
 }
 const _: () = crate::support::assert_niche::<LLJITBuilder>();
 
-/* STRUCT LLJITBuilder:
-Important Functions:
-create ------------: Create a new [LLJITBuilder].
-as_ptr ------------: Convert the [LLJITBuilder] instance into an [LLVMOrcLLJITBuilderRef].
-*/
 impl LLJITBuilder {
     /// Unchecked creation of an [LLJITBuilder] from an [LLVMOrcLLJITBuilderRef].
     ///
