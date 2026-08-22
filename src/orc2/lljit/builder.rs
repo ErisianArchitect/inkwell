@@ -40,6 +40,27 @@ create ------------: Create a new [LLJITBuilder].
 as_ptr ------------: Convert the [LLJITBuilder] instance into an [LLVMOrcLLJITBuilderRef].
 */
 impl LLJITBuilder {
+    /// Unchecked creation of an [LLJITBuilder] from an [LLVMOrcLLJITBuilderRef].
+    ///
+    /// # Safety
+    /// This function produces an unchecked [NonNull] from the pointer that is provided, which can cause undefined
+    /// behavior if it is null or does not point to a valid LLJITBuilder.
+    pub unsafe fn from_raw_unchecked(ptr: LLVMOrcLLJITBuilderRef) -> Self {
+        unsafe {
+            Self {
+                ptr: NonNull::new_unchecked(ptr),
+            }
+        }
+    }
+    
+    /// Attempt to create an [LLJITBuilder] from a raw pointer.
+    ///
+    /// # Safety
+    /// This function assumes that the pointer provided is a valid reference to [LLVMOrcLLJITBuilder].
+    pub unsafe fn from_raw(ptr: LLVMOrcLLJITBuilderRef) -> Option<Self> {
+        NonNull::new(ptr).map(|ptr| Self { ptr })
+    }
+    
     /// Create an [LLJITBuilder], which can be used to construct an [LLJIT] instance.
     pub fn create() -> Self {
         unsafe {
@@ -66,12 +87,13 @@ impl LLJITBuilder {
     /// This function is optional, and by omitting it, [LLJITBuilder] will use [JITTargetMachineBuilder::detect_host]
     /// instead.
     pub fn set_target_machine_builder(&mut self, builder: JITTargetMachineBuilder) {
+        // LLVMOrcLLJITBuilderSetJITTargetMachineBuilder takes ownership of JITTargetMachineBuilder.
+        // [https://llvm.org/docs/doxygen/group__LLVMCExecutionEngineLLJIT.html#gabc2878deee51f35abc19ba2fc28ce4cf]
         let builder = ManuallyDrop::new(builder);
         unsafe {
             LLVMOrcLLJITBuilderSetJITTargetMachineBuilder(self.as_ptr(), builder.as_ptr());
         }
     }
-
 }
 
 impl Drop for LLJITBuilder {
