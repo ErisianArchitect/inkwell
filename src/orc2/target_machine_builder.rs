@@ -39,6 +39,7 @@ const _: () = crate::support::assert_niche::<JITTargetMachineBuilder>();
 
 impl JITTargetMachineBuilder {
     /// Create a [JITTargetMachineBuilder] from a [TargetMachine]. This will take ownership of the [TargetMachine].
+    #[must_use]
     pub fn create_from_target_machine(target_machine: TargetMachine) -> Self {
         // This function takes ownership of the target machine.
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga60a76da97b1229d5303eff475fb9a8e8]
@@ -98,6 +99,7 @@ impl JITTargetMachineBuilder {
     }
 
     /// Get the [TargetTriple] for this [JITTargetMachineBuilder].
+    #[must_use]
     pub fn get_target_triple(&self) -> TargetTriple {
         // LLMVOrcJITTargetMachineBuilderGetTargetTriple will create a new TargetTriple string.
         // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html] (line 801)
