@@ -16,11 +16,13 @@ use ::llvm_sys::{
         LLVMOrcJITTargetMachineBuilderRef,
         LLVMOrcDisposeJITTargetMachineBuilder,
         LLVMOrcJITTargetMachineBuilderDetectHost,
+        LLVMOrcJITTargetMachineBuilderSetTargetTriple,
+        LLVMOrcJITTargetMachineBuilderGetTargetTriple,
     },
 };
 
 use crate::{
-    targets::TargetMachine,
+    targets::{TargetMachine, TargetTriple},
     error::{LLVMError},
 };
 
@@ -84,6 +86,14 @@ impl JITTargetMachineBuilder {
             Ok(Self {
                 ptr,
             })
+        }
+    }
+
+    /// Sets the [TargetTriple] of the [JITTargetMachineBuilder].
+    pub fn set_target_triple(&mut self, triple: &TargetTriple) {
+        let triple_t_cstr = triple.as_str();
+        unsafe {
+            LLVMOrcJITTargetMachineBuilderSetTargetTriple(self.as_ptr(), triple_t_cstr.as_ptr());
         }
     }
 }
