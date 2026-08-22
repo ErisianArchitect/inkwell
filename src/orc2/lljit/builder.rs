@@ -99,6 +99,8 @@ impl LLJITBuilder {
             LLVMOrcLLJITBuilderSetJITTargetMachineBuilder(self.as_ptr(), builder.as_ptr());
         }
     }
+
+    // TODO: Add build function.
 }
 
 impl Drop for LLJITBuilder {
