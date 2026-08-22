@@ -20,7 +20,7 @@ use ::llvm_sys::{
 
 use crate::{
     orc2::{
-        target_machine::{
+        target_machine_builder::{
             JITTargetMachineBuilder,
         },
     },

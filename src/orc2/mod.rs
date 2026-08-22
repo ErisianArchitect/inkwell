@@ -1,6 +1,6 @@
 
 pub mod lljit;
-pub mod target_machine;
+pub mod target_machine_builder;
 
 /* ---| NOTES:
 Available on versions:
