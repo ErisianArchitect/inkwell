@@ -60,6 +60,7 @@ impl LLJITBuilder {
     /// # Safety
     /// This function assumes that the pointer provided is a valid reference to [LLVMOrcLLJITBuilder].
     #[must_use]
+    #[inline(always)] // zero-cost abstractions, fine to mark as inline(always).
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITBuilderRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
