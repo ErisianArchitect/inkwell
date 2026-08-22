@@ -26,7 +26,7 @@ use crate::{
     },
 };
 
-/// A builder that is used to construct either an [LLJIT] or [LLLazyJIT] instance.
+/// A builder that is used to construct either an [LLJIT].
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct LLJITBuilder {
