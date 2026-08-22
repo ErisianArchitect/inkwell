@@ -68,8 +68,14 @@ impl LLJITBuilder {
     }
     
     /// Create an [LLJITBuilder], which can be used to construct an [LLJIT] instance.
+    ///
+    /// # Example
+    /// ```rust
+    /// use inkwell::orc2::lljit::builder::LLJITBuilder;
+    /// let builder = LLJITBuilder::new();
+    /// ```
     #[must_use]
-    pub fn create() -> Self {
+    pub fn new() -> Self {
         unsafe {
             let Some(ptr) = NonNull::new(LLVMOrcCreateLLJITBuilder()) else {
                 crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create LLJITBuilder.");
