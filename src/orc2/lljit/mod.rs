@@ -31,6 +31,7 @@ impl LLJIT {
     /// # Safety
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid [LLVMOrcLLJITRef].
     #[must_use]
+    #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcLLJITRef) -> Self {
         unsafe {
             Self { ptr: NonNull::new_unchecked(ptr) }
@@ -43,6 +44,7 @@ impl LLJIT {
     /// # Safety
     /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcLLJITRef].
     #[must_use]
+    #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
