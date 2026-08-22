@@ -45,6 +45,8 @@ impl LLJITBuilder {
     /// # Safety
     /// This function produces an unchecked [NonNull] from the pointer that is provided, which can cause undefined
     /// behavior if it is null or does not point to a valid LLJITBuilder.
+    #[must_use]
+    #[inline(always)] // zero-cost abstractions, fine to mark as inline(always).
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcLLJITBuilderRef) -> Self {
         unsafe {
             Self {
@@ -57,11 +59,13 @@ impl LLJITBuilder {
     ///
     /// # Safety
     /// This function assumes that the pointer provided is a valid reference to [LLVMOrcLLJITBuilder].
+    #[must_use]
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITBuilderRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
     
     /// Create an [LLJITBuilder], which can be used to construct an [LLJIT] instance.
+    #[must_use]
     pub fn create() -> Self {
         unsafe {
             let Some(ptr) = NonNull::new(LLVMOrcCreateLLJITBuilder()) else {
