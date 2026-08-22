@@ -26,15 +26,11 @@ use crate::{
     },
 };
 
-/// A [NonNull] variant that wraps [LLVMOrcOpaqueLLJITBuilder], which is the equivalent of a non-null
-/// [LLVMOrcLLJITBuilderRef].
-pub type LLJITBuilderRefNonNull = NonNull<LLVMOrcOpaqueLLJITBuilder>;
-
 /// A builder that is used to construct either an [LLJIT] or [LLLazyJIT] instance.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct LLJITBuilder {
-    ptr: LLJITBuilderRefNonNull,
+    ptr: NonNull<LLVMOrcOpaqueLLJITBuilder>,
 }
 const _: () = crate::support::assert_niche::<LLJITBuilder>();
 
