@@ -46,9 +46,9 @@ impl JITTargetMachineBuilder {
     /// [LLVMOrcJITTargetMachineBuilderRef].
     #[must_use]
     #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
-    pub unsafe fn from_raw_unchecked(ptr: LLMVOrcJITTargetMachineBuilderRef) -> Self {
+    pub unsafe fn from_raw_unchecked(ptr: LLVMOrcJITTargetMachineBuilderRef) -> Self {
         unsafe {
-            Self { ptr: NonNull::new_unchecked(ptr),
+            Self { ptr: NonNull::new_unchecked(ptr) }
         }
     }
 
@@ -96,6 +96,12 @@ impl JITTargetMachineBuilder {
 
     // [https://llvm.org/doxygen/classllvm_1_1orc_1_1JITTargetMachineBuilder.html#aa67d14db111b10a6a09cb70fa5f4e084]
     /// Attempt to create a [JITTargetMachineBuilder] for the host system.
+    ///
+    /// # Example
+    /// ```rust
+    /// use inkwell::orc2::target_machine_builder::JITTargetMachineBuilder;
+    /// let builder = JITTargetMachineBuilder::detect_host().unwrap();
+    /// ```
     pub fn detect_host() -> Result<Self, LLVMError> {
         let mut builder = ptr::null_mut();
         unsafe {
