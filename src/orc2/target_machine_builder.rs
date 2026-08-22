@@ -38,6 +38,31 @@ pub struct JITTargetMachineBuilder {
 const _: () = crate::support::assert_niche::<JITTargetMachineBuilder>();
 
 impl JITTargetMachineBuilder {
+    /// Create an [JITTargetMachineBuilder] instance from a raw [LLVMOrcJITTargetMachineBuilderRef] without checking if
+    /// it is null.
+    ///
+    /// # Safety
+    /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
+    /// [LLVMOrcJITTargetMachineBuilderRef].
+    #[must_use]
+    #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
+    pub unsafe fn from_raw_unchecked(ptr: LLMVOrcJITTargetMachineBuilderRef) -> Self {
+        unsafe {
+            Self { ptr: NonNull::new_unchecked(ptr),
+        }
+    }
+
+    /// Create an [JITTargetMachineBuilder] instance from a raw [LLVMOrcJITTargetMachineBuilderRef]. This function will
+    /// only ensure that the pointer is non-null, it cannot verify that the reference is valid.
+    ///
+    /// # Safety
+    /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcJITTargetMachineBuilderRef].
+    #[must_use]
+    #[inline(always)] // Zero-cost abstraction, fine to use inline(always).
+    pub unsafe fn from_raw(ptr: LLVMOrcJITTargetMachineBuilderRef) -> Option<Self> {
+        NonNull::new(ptr).map(|ptr| Self { ptr })
+    }
+    
     /// Create a [JITTargetMachineBuilder] from a [TargetMachine]. This will take ownership of the [TargetMachine].
     #[must_use]
     pub fn create_from_target_machine(target_machine: TargetMachine) -> Self {
