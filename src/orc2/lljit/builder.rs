@@ -1,5 +1,6 @@
 use ::core::{
     ptr::{
+        self,
         NonNull,
     },
     mem::{
@@ -23,6 +24,12 @@ use crate::{
         target_machine_builder::{
             JITTargetMachineBuilder,
         },
+        lljit::{
+            LLJIT,
+        },
+    },
+    error::{
+        LLVMError,
     },
 };
 
@@ -95,7 +102,23 @@ impl LLJITBuilder {
         }
     }
 
-    // TODO: Add build function.
+    /// Attempts to create an [LLJIT] instance by consuming this [LLJITBuilder].
+    pub fn build(self) -> Result<LLJIT, LLVMError> {
+        // Creating the LLJIT instance from the builder takes ownership of the builder regardless of success status.
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#gade2e259b9be0f749666842ada250a816]
+        let mut ptr = ptr::null_mut();
+        let builder = ManuallyDrop::new(self);
+        let result = unsafe {
+            LLVMError::from_error_ref(LLVMOrcCreateLLJIT(&mut ptr, builder.as_ptr()))
+        };
+        if let Some(error) = result {
+            return Err(error);
+        }
+        let Some(ptr) = NonNull::new(ptr) else {
+            crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create LLJIT from LLJITBuilder");
+        };
+        Ok(LLJIT { ptr })
+    }
 }
 
 impl Drop for LLJITBuilder {
