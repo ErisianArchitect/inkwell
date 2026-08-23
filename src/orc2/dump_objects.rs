@@ -11,7 +11,7 @@ use crate::support::to_c_str;
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct DumpObjects {
-    ptr: NonNull<LLVMOrcOpaqueDumpObjects>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueDumpObjects>,
 }
 
 impl DumpObjects {

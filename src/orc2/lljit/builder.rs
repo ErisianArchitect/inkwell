@@ -17,7 +17,7 @@ use crate::{
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct LLJITBuilder {
-    ptr: NonNull<LLVMOrcOpaqueLLJITBuilder>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueLLJITBuilder>,
 }
 const _: () = crate::support::assert_niche::<LLJITBuilder>();
 

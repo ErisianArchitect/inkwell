@@ -24,7 +24,7 @@ use crate::{
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct IndirectStubsManager {
-    ptr: NonNull<LLVMOrcOpaqueIndirectStubsManager>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueIndirectStubsManager>,
 }
 
 impl IndirectStubsManager {

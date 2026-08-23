@@ -34,7 +34,7 @@ use crate::{
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ThreadSafeContext {
-    ptr: NonNull<LLVMOrcOpaqueThreadSafeContext>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueThreadSafeContext>,
 }
 
 impl ThreadSafeContext {
