@@ -16,7 +16,7 @@ use ::llvm_sys::{
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ThreadSafeModule {
-    ptr: NonNull<LLVMOrcOpaqueThreadSafeModule>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueThreadSafeModule>,
 }
 
 impl ThreadSafeModule {
