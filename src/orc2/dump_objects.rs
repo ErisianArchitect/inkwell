@@ -20,6 +20,8 @@ impl DumpObjects {
     /// # Safety
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
     /// [LLVMOrcDumpObjectsRef].
+    #[must_use]
+    #[inline(always)] // Zero-cost abstraction, inline(always) is fine.
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcDumpObjectsRef) -> Self {
         unsafe {
             Self {
@@ -33,6 +35,8 @@ impl DumpObjects {
     ///
     /// # Safety
     /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcDumpObjectsRef].
+    #[must_use]
+    #[inline]
     pub unsafe fn from_raw(ptr: LLVMOrcDumpObjectsRef) -> Option<Self> {
         Some(Self {
             ptr: NonNull::new(ptr)?,
