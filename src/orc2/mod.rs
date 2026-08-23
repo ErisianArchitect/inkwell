@@ -15,7 +15,7 @@ pub mod target_machine_builder;
     [ ]: LLVMOrcLLJITBuilderSetObjectLinkingLayerCreator
 [ ]: LLVMOrcLLJITRef
     [x]: LLVMOrcCreateLLJIT
-    [ ]: LLVMOrcDisposeLLJIT
+    [x]: LLVMOrcDisposeLLJIT
     [ ]: LLVMOrcLLJITGetGlobalPrefix
     [ ]: LLVMOrcLLJITGetMainJITDylib
     [ ]: LLVMOrcLLJITEnableDebugSupport
