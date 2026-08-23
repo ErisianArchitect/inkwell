@@ -23,7 +23,7 @@ pub mod target_machine_builder;
     [ ]: LLVMOrcLLJITGetExecutionSession
     [ ]: LLVMOrcLLJITGetIRTransformLayer
     [ ]: LLVMOrcLLJITGetObjTransformLayer
-    [ ]: LLVMOrcLLJITGetTripleString
+    [x]: LLVMOrcLLJITGetTripleString
     [ ]: LLVMOrcLLJITGetDataLayoutStr
     [ ]: LLVMOrcLLJITAddObjectFile
     [ ]: LLVMOrcLLJITAddLLVMIRModule
