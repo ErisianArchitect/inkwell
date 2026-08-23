@@ -82,9 +82,9 @@ impl LLJIT {
             }
             let triple_t_cstr = CStr::from_ptr(triple_t_raw_cstr);
             let len = triple_t_cstr.count_bytes();
-            let bytes = ::core::slice::from_raw_parts(triple_t_cstr.as_ptr().cast::<u8>(), len);
+            let triple_t_bytes = ::core::slice::from_raw_parts(triple_t_cstr.as_ptr().cast::<u8>(), len);
             // TODO: In theory, a target triple string should be exclusively ASCII, but this is unverified.
-            str::from_utf8_unchecked(bytes)
+            str::from_utf8_unchecked(triple_t_bytes)
         }
     }
 }
