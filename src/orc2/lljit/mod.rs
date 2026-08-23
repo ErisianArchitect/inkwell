@@ -6,6 +6,7 @@ use ::core::{
         NonNull,
     },
 };
+use std::{ffi::CStr, fmt::Pointer};
 
 use ::llvm_sys::{
     orc2::{
@@ -13,6 +14,7 @@ use ::llvm_sys::{
             LLVMOrcLLJITRef,
             LLVMOrcOpaqueLLJIT,
             LLVMOrcDisposeLLJIT,
+            LLVMOrcLLJITGetTripleString,
         },
     },
 };
@@ -59,6 +61,31 @@ impl LLJIT {
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcLLJITRef {
         self.ptr.as_ptr()
+    }
+
+    /// Get this the target triple string for this [LLJIT].
+    pub fn get_triple_string(&self) -> &str {
+        // C API source.
+        // [https://github.com/llvm/llvm-project/blob/dd8afce5797a6c638840ce17a9a5c6d88ae60d03/llvm/lib/ExecutionEngine/Orc/OrcV2CBindings.cpp#L957]
+        // C API declaration source
+        // [https://github.com/llvm/llvm-project/blob/dd8afce5797a6c638840ce17a9a5c6d88ae60d03/llvm/include/llvm-c/LLJIT.h#L150]
+        // Documentation
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#ga3bd4b9f32cdb137fea4ac5652e65e762]
+        unsafe {
+            let triple_t_raw_cstr = LLVMOrcLLJITGetTripleString(self.as_ptr());
+            if triple_t_raw_cstr.is_null() {
+                panic!(
+                    "Target Triple string returned from LLVMOrcLLJITGetTripleString was null.\nFile: {}:{}",
+                    file!(),
+                    line!(),
+                );
+            }
+            let triple_t_cstr = CStr::from_ptr(triple_t_raw_cstr);
+            let len = triple_t_cstr.count_bytes();
+            let bytes = ::core::slice::from_raw_parts(triple_t_cstr.as_ptr().cast::<u8>(), len);
+            // TODO: In theory, a target triple string should be exclusively ASCII, but this is unverified.
+            str::from_utf8_unchecked(bytes)
+        }
     }
 }
 
