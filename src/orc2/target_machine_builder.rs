@@ -63,6 +63,15 @@ impl JITTargetMachineBuilder {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
     
+    /// Returns the inner [LLVMOrcJITTargetMachineBuilderRef].
+    ///
+    /// NOTE: [JITTargetMachineBuilder] is a transparent wrapper around this pointer.
+    #[must_use]
+    #[inline(always)]
+    pub fn as_ptr(&self) -> LLVMOrcJITTargetMachineBuilderRef {
+        self.ptr.as_ptr()
+    }
+
     /// Create a [JITTargetMachineBuilder] from a [TargetMachine]. This will take ownership of the [TargetMachine].
     #[must_use]
     pub fn create_from_target_machine(target_machine: TargetMachine) -> Self {
@@ -83,15 +92,6 @@ impl JITTargetMachineBuilder {
                 ptr,
             }
         }
-    }
-
-    /// Returns the inner [LLVMOrcJITTargetMachineBuilderRef].
-    ///
-    /// NOTE: [JITTargetMachineBuilder] is a transparent wrapper around this pointer.
-    #[must_use]
-    #[inline(always)]
-    pub fn as_ptr(&self) -> LLVMOrcJITTargetMachineBuilderRef {
-        self.ptr.as_ptr()
     }
 
     // [https://llvm.org/doxygen/classllvm_1_1orc_1_1JITTargetMachineBuilder.html#aa67d14db111b10a6a09cb70fa5f4e084]
