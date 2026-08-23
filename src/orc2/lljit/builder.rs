@@ -42,7 +42,7 @@ impl LLJITBuilder {
     /// # Safety
     /// This function assumes that the pointer provided is a valid reference to [LLVMOrcLLJITBuilder].
     #[must_use]
-    #[inline(always)] // zero-cost abstractions, fine to mark as inline(always).
+    #[inline]
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITBuilderRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
@@ -75,6 +75,7 @@ impl LLJITBuilder {
         self.ptr.as_ptr()
     }
 
+    // NOTE: This function can probably be marked inline without issue.
     /// Set the [JITTargetMachineBuilder] for creation of the LLJIT instance.
     ///
     /// This function is optional, and by omitting it, [LLJITBuilder] will use [JITTargetMachineBuilder::detect_host]
