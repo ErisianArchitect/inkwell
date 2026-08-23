@@ -10,6 +10,7 @@ use ::llvm_sys::{
         LLVMOrcDumpObjectsRef,
         LLVMOrcOpaqueDumpObjects,
         LLVMOrcCreateDumpObjects,
+        LLVMOrcDisposeDumpObjects,
     },
 };
 
@@ -38,5 +39,13 @@ impl DumpObjects {
         Some(Self {
             ptr: NonNull::new(ptr)?,
         })
+    }
+}
+
+impl Drop {
+    fn drop(&mut self) {
+        unsafe {
+            LLVMOrcDisposeDumpObjects(self.as_ptr());
+        }
     }
 }
