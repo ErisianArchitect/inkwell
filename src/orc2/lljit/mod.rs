@@ -12,7 +12,7 @@ use crate::error::LLVMError;
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct LLJIT {
-    ptr: NonNull<LLVMOrcOpaqueLLJIT>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueLLJIT>,
 }
 
 impl LLJIT {
