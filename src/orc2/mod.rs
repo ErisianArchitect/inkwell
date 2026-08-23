@@ -2,6 +2,7 @@ pub mod dump_objects;
 pub mod indirect_stubs_manager;
 pub mod lljit;
 pub mod target_machine_builder;
+pub mod thread_safe_context;
 
 // LLVM Documentation for this API can be found here: [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
 // Look for the `Topics` section.
@@ -76,7 +77,7 @@ pub mod target_machine_builder;
     [ ]: LLVMOrcMaterializationResponsibilityGetRequestedSymbols
     [ ]: LLVMOrcMaterializationResponsibilityDelegate
 [ ]: LLVMOrcMaterializationUnitRef
-    [ ]: LLVMOrcCreateCustomMateerializationUnit
+    [ ]: LLVMOrcCreateCustomMaterializationUnit
     [ ]: LLVMOrcLazyReexports
     [ ]: LLVMOrcAbsoluteSymbols
 [ ]: LLVMOrcObjectLayerRef
@@ -98,9 +99,9 @@ pub mod target_machine_builder;
 [ ]: LLVMOrcSymbolStringPoolRef
     [ ]: LLVMOrcSymbolStringPoolClearDeadEntries
 [ ]: LLVMOrcThreadSafeContextRef
-    [ ]: LLVMOrcCreateNewThreadSafeContext
+    [x]: LLVMOrcCreateNewThreadSafeContext
     [ ]: LLVMOrcCreateNewThreadSafeContextFromLLVMContext
-    [ ]: LLVMOrcDisposeThreadSafeContext
+    [x]: LLVMOrcDisposeThreadSafeContext
     [ ]: LLVMOrcCreateNewThreadSafeModule
 [ ]: LLVMOrcThreadSafeModuleRef
     [ ]: LLVMOrcDisposeThreadSafeModule
