@@ -7,6 +7,105 @@ pub mod target_machine_builder;
 // [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
 // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html]
 
+/* ---| Completion Status:
+[ ]: LLVMOrcLLJITBuilderRef
+    [x]: LLVMOrcCreateLLJITBuilder
+    [x]: LLVMOrcDisposeLLJITBuilder
+    [x]: LLVMOrcCreateLLJIT
+    [ ]: LLVMOrcLLJITBuilderSetObjectLinkingLayerCreator
+[ ]: LLVMOrcLLJITRef
+    [x]: LLVMOrcCreateLLJIT
+    [ ]: LLVMOrcDisposeLLJIT
+    [ ]: LLVMOrcLLJITGetGlobalPrefix
+    [ ]: LLVMOrcLLJITGetMainJITDylib
+    [ ]: LLVMOrcLLJITEnableDebugSupport
+    [ ]: LLVMOrcLLJITGetObjectLinkingLayer
+    [ ]: LLVMOrcLLJITGetExecutionSession
+    [ ]: LLVMOrcLLJITGetIRTransformLayer
+    [ ]: LLVMOrcLLJITGetObjTransformLayer
+    [ ]: LLVMOrcLLJITGetTripleString
+    [ ]: LLVMOrcLLJITGetDataLayoutStr
+    [ ]: LLVMOrcLLJITAddObjectFile
+    [ ]: LLVMOrcLLJITAddLLVMIRModule
+    [ ]: LLVMOrcLLJITMangleAndIntern
+    [ ]: LLVMOrcLLJITAddObjectFileWithRT
+    [ ]: LLVMOrcLLJITAddLLVMIRModuleWithRT
+    [ ]: LLVMOrcLLJITLookup
+[ ]: LLVMOrcDefinitionGeneratorRef
+    [ ]: LLVMOrcCreateCustomCAPIDefinitionGenerator
+    [ ]: LLVMOrcDisposeDefinitionGenerator
+[ ]: LLVMOrcDumpObjectsRef
+    [ ]: LLVMOrcCreateDumpObjects
+    [ ]: LLVMOrcDisposeDumpObjects
+    [ ]: LLVMOrcDumpObjects_CallOperator
+[ ]: LLVMOrcExecutionSessionRef
+[ ]: LLVMOrcIRTransformLayerRef
+    [ ]: LLVMOrcIRTransformLayerEmit
+    [ ]: LLVMOrcIRTransformLayerSetTransform
+[ ]: LLVMOrcIndirectStubsManagerRef
+    [ ]: LLVMOrcCreateLocalIndirectStubsManager
+    [ ]: LLVMOrcDisposeIndirectStubsManager
+[ ]: LLVMOrcJITDylibRef
+    [ ]: LLVMOrcJITDylibClear
+    [ ]: LLVMOrcJITDylibCreateResourceTracker
+    [ ]: LLVMOrcJITDylibDefine
+    [ ]: LLVMOrcJITDylibAddGenerator
+[x]: LLVMOrcJITTargetMachineBuilderRef
+    [x]: LLVMOrcJITTargetMachineBuilderCreateFromTargetMachine
+    [x]: LLVMOrcDisposeJITTargetMachineBuilder
+    [x]: LLVMOrcJITTargetMachineBuilderDetectHost
+    [x]: LLVMOrcJITTargetMachineBuilderSetTargetTriple
+    [x]: LLVMOrcJITTargetMachineBuilderGetTargetTriple
+[ ]: LLVMOrcLazyCallThroughManagerRef
+    [ ]: LLVMOrcDisposeLazyCallThroughManager
+    [ ]: LLVMOrcCreateLocalLazyCallThroughManager
+[ ]: LLVMOrcLookupStateRef
+    [ ]: LLVMOrcLookupStateContinueLookup
+[ ]: LLVMOrcMaterializationResponsibilityRef
+    [ ]: LLVMOrcDisposeMaterializationResponsibility
+    [ ]: LLVMOrcMaterializationResponsibilityGetTargetDylib
+    [ ]: LLVMOrcMaterializationResponsibilityFailMaterialization
+    [ ]: LLVMOrcMaterializationResponsibilityGetExecutionSession
+    [ ]: LLVMOrcMaterializationResponsibilityGetInitializerSymbol
+    [ ]: LLVMOrcMaterializationResponsibilityReplace
+    [ ]: LLVMOrcMaterializationResponsibilityNotifyResolved
+    [ ]: LLVMOrcMaterializationResponsibilityDefineMaterializing
+    [ ]: LLVMOrcMaterializationResponsibilityGetSymbols
+    [ ]: LLVMOrcMaterializationResponsibilityNotifyEmitted
+    [ ]: LLVMOrcMaterializationResponsibilityGetRequestedSymbols
+    [ ]: LLVMOrcMaterializationResponsibilityDelegate
+[ ]: LLVMOrcMaterializationUnitRef
+    [ ]: LLVMOrcCreateCustomMateerializationUnit
+    [ ]: LLVMOrcLazyReexports
+    [ ]: LLVMOrcAbsoluteSymbols
+[ ]: LLVMOrcObjectLayerRef
+    [ ]: LLVMOrcDisposeObjectLayer
+    [ ]: LLVMOrcRTDyldObjectLinkingLayerRegisterJITEventListener
+    [ ]: LLVMOrcObjectLayerEmit
+    [ ]: LLVMOrcObjectLayerAddObjectFile
+    [ ]: LLVMOrcObjectLayerAddObjectFileWithRT
+    [ ]: LLVMOrcCreateStaticLibrarySearchGeneratorForPath
+[ ]: LLVMOrcObjectLinkingLayerRef
+[ ]: LLVMOrcObjectTransformLayerRef
+    [ ]: LLVMOrcObjectTransformLayerSetTransform
+[ ]: LLVMOrcResourceTrackerRef
+[ ]: LLVMOrcSymbolStringPoolEntryRef
+    [ ]: LLVMOrcRetainSymbolStringPoolEntry
+    [ ]: LLVMOrcReleaseSymbolStringPoolEntry
+    [ ]: LLVMOrcSymbolStringPoolEntryStr
+    [ ]: LLVMOrcDisposeSymbols
+[ ]: LLVMOrcSymbolStringPoolRef
+    [ ]: LLVMOrcSymbolStringPoolClearDeadEntries
+[ ]: LLVMOrcThreadSafeContextRef
+    [ ]: LLVMOrcCreateNewThreadSafeContext
+    [ ]: LLVMOrcCreateNewThreadSafeContextFromLLVMContext
+    [ ]: LLVMOrcDisposeThreadSafeContext
+    [ ]: LLVMOrcCreateNewThreadSafeModule
+[ ]: LLVMOrcThreadSafeModuleRef
+    [ ]: LLVMOrcDisposeThreadSafeModule
+    [ ]: LLVMOrcThreadSafeModuleWithModuleDo
+*/
+
 /* ---| NOTES:
 Available on versions:
 - llvm12-0
