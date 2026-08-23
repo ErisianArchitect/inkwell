@@ -136,7 +136,8 @@ impl Drop for LLVMErrorMessage {
 // [https://llvm.org/doxygen/classllvm_1_1Error.html]
 /// Internal LLVM error type with context and mandatory checking.
 /// 
-/// NOTE: This is a transparent wrapper around a non-null version of [LLVMErrorRef].
+/// # NOTE
+/// This is a transparent wrapper around a non-null version of [LLVMErrorRef].
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct LLVMError {
