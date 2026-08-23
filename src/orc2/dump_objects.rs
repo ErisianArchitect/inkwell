@@ -40,6 +40,16 @@ impl DumpObjects {
             ptr: NonNull::new(ptr)?,
         })
     }
+
+    /// Returns the inner [LLVMOrcDumpObjectsRef].
+    ///
+    /// # NOTE
+    /// [DumpObjects] is a transparent wrapper around this pointer.
+    #[must_use]
+    #[inline(always)]
+    pub fn as_ptr(&self) -> LLVMOrcDumpObjectsRef {
+        self.ptr.as_ptr()
+    }
 }
 
 impl Drop {
