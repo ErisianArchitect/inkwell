@@ -1,9 +1,15 @@
-pub mod dump_objects;
-pub mod indirect_stubs_manager;
-pub mod lljit;
-pub mod target_machine_builder;
-pub mod thread_safe_context;
-pub mod thread_safe_module;
+mod dump_objects;
+mod indirect_stubs_manager;
+mod lljit;
+mod target_machine_builder;
+mod thread_safe_context;
+mod thread_safe_module;
+
+pub use dump_objects::DumpObjects;
+pub use indirect_stubs_manager::IndirectStubsManager;
+pub use target_machine_builder::JITTargetMachineBuilder;
+pub use thread_safe_context::ThreadSafeContext;
+pub use thread_safe_module::ThreadSafeModule;
 
 // LLVM Documentation for this API can be found here: [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
 // Look for the `Topics` section.
