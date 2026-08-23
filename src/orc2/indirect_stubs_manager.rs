@@ -14,6 +14,12 @@ use ::llvm_sys::{
     },
 };
 
+use crate::{
+    targets::{
+        TargetTriple,
+    },
+};
+
 // TODO (ErisianArchitect): IndirectStubsManager documentation.
 #[repr(transparent)]
 #[derive(Debug)]
@@ -22,8 +28,6 @@ pub struct IndirectStubsManager {
 }
 
 impl IndirectStubsManager {
-    // TODO (ErisianArchitect): pub fn new
-
     /// Create an [IndirectStubsManager] instance from a raw [LLVMOrcIndirectStubsManagerRef] without checking if it is
     /// null.
     ///
@@ -61,6 +65,24 @@ impl IndirectStubsManager {
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcIndirectStubsManagerRef {
         self.ptr.as_ptr()
+    }
+
+    /// Create an [IndirectStubsManager] from a target triple.
+    #[must_use]
+    pub fn new(target_triple: &TargetTriple) -> Self {
+        unsafe {
+            // C API source code:
+            // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l01184]
+            // Documentation:
+            // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga7b78931cda11ac9d05a701dc8a28f13b]
+            let ptr = LLVMOrcCreateLocalIndirectStubsManager(target_triple.as_ptr());
+            let Some(ptr) = NonNull::new(ptr) else {
+                crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create IndirectStubsManager.");
+            }
+            Self {
+                ptr,
+            }
+        }
     }
 }
 
