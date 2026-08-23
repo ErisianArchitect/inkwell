@@ -12,10 +12,16 @@ use ::llvm_sys::{
         lljit::{
             LLVMOrcLLJITRef,
             LLVMOrcOpaqueLLJIT,
+            LLVMOrcDisposeLLJIT,
         },
     },
 };
 
+use crate::{
+    error::{
+        LLVMError,
+    },
+};
 
 /// A high-level JIT (Just-In-Time) compiler utility built on top of LLVM's ORC (On-Request-Compilation) V2
 /// architecture.
@@ -53,5 +59,16 @@ impl LLJIT {
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcLLJITRef {
         self.ptr.as_ptr()
+    }
+}
+
+impl Drop for LLJIT {
+    fn drop(&mut self) {
+        unsafe {
+            // This is an infallible operation.
+            // The [LLVMError] will drop on its own, and does not need to be handled.
+            // [https://github.com/llvm/llvm-project/blob/dd8afce5797a6c638840ce17a9a5c6d88ae60d03/llvm/lib/ExecutionEngine/Orc/OrcV2CBindings.cpp#L944]
+            LLVMError::from_error_ref(LLVMOrcDisposeLLJIT(self.as_ptr()));
+        }
     }
 }
