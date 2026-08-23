@@ -13,6 +13,13 @@ use ::llvm_sys::{
     },
 };
 
+use crate::{
+    module::{Module},
+    error::{
+        LLVMError,
+    },
+};
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ThreadSafeModule {
@@ -51,6 +58,9 @@ impl ThreadSafeModule {
         self.ptr.as_ptr()
     }
 }
+
+unsafe impl Send for ThreadSafeModule {}
+unsafe impl Sync for ThreadSafeModule {}
 
 impl Drop for ThreadSafeModule {
     fn drop(&mut self) {
