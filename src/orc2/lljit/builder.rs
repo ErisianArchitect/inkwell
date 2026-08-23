@@ -1,36 +1,16 @@
 use ::core::{
-    ptr::{
-        self,
-        NonNull,
-    },
-    mem::{
-        ManuallyDrop,
-    },
+    mem::ManuallyDrop,
+    ptr::{self, NonNull},
 };
 
-use ::llvm_sys::{
-    orc2::lljit::{
-        LLVMOrcCreateLLJIT,
-        LLVMOrcCreateLLJITBuilder,
-        LLVMOrcDisposeLLJITBuilder,
-        LLVMOrcLLJITBuilderRef,
-        LLVMOrcOpaqueLLJITBuilder,
-        LLVMOrcLLJITBuilderSetJITTargetMachineBuilder,
-    },
+use ::llvm_sys::orc2::lljit::{
+    LLVMOrcCreateLLJIT, LLVMOrcCreateLLJITBuilder, LLVMOrcDisposeLLJITBuilder, LLVMOrcLLJITBuilderRef,
+    LLVMOrcLLJITBuilderSetJITTargetMachineBuilder, LLVMOrcOpaqueLLJITBuilder,
 };
 
 use crate::{
-    orc2::{
-        target_machine_builder::{
-            JITTargetMachineBuilder,
-        },
-        lljit::{
-            LLJIT,
-        },
-    },
-    error::{
-        LLVMError,
-    },
+    error::LLVMError,
+    orc2::{lljit::LLJIT, target_machine_builder::JITTargetMachineBuilder},
 };
 
 /// A builder that is used to construct either an [LLJIT].
@@ -56,7 +36,7 @@ impl LLJITBuilder {
             }
         }
     }
-    
+
     /// Attempt to create an [LLJITBuilder] from a raw pointer.
     ///
     /// # Safety
@@ -66,7 +46,7 @@ impl LLJITBuilder {
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITBuilderRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
-    
+
     /// Create an [LLJITBuilder], which can be used to construct an [LLJIT] instance.
     ///
     /// # Example
@@ -83,7 +63,7 @@ impl LLJITBuilder {
             Self { ptr }
         }
     }
-    
+
     /// Returns the inner [LLVMOrcLLJITBuilderRef].
     ///
     /// NOTE: [LLJITBuilder] is a transparent wrapper around this pointer.
@@ -114,9 +94,7 @@ impl LLJITBuilder {
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#gade2e259b9be0f749666842ada250a816]
         let mut ptr = ptr::null_mut();
         let builder = ManuallyDrop::new(self);
-        let result = unsafe {
-            LLVMError::from_error_ref(LLVMOrcCreateLLJIT(&mut ptr, builder.as_ptr()))
-        };
+        let result = unsafe { LLVMError::from_error_ref(LLVMOrcCreateLLJIT(&mut ptr, builder.as_ptr())) };
         if let Some(error) = result {
             return Err(error);
         }

@@ -1,30 +1,12 @@
+use ::core::ptr::NonNull;
 
-use ::core::{
-    ptr::{
-        NonNull,
-    },
+use ::std::borrow::Cow;
+
+use ::llvm_sys::orc2::{
+    LLVMOrcCreateDumpObjects, LLVMOrcDisposeDumpObjects, LLVMOrcDumpObjectsRef, LLVMOrcOpaqueDumpObjects,
 };
 
-use ::std::{
-    borrow::{
-        Cow,
-    },
-};
-
-use ::llvm_sys::{
-    orc2::{
-        LLVMOrcDumpObjectsRef,
-        LLVMOrcOpaqueDumpObjects,
-        LLVMOrcCreateDumpObjects,
-        LLVMOrcDisposeDumpObjects,
-    },
-};
-
-use crate::{
-    support::{
-        to_c_str,
-    },
-};
+use crate::support::to_c_str;
 
 #[repr(transparent)]
 #[derive(Debug)]
@@ -39,7 +21,11 @@ impl DumpObjects {
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
     /// [LLVMOrcDumpObjectsRef].
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcDumpObjectsRef) -> Self {
-        unsafe { Self { ptr: NonNull::new_unchecked(ptr) } }
+        unsafe {
+            Self {
+                ptr: NonNull::new_unchecked(ptr),
+            }
+        }
     }
 
     /// Create an [DumpObjects] instance from a raw [LLVMOrcDumpObjectsRef]. This function will only ensure that the
@@ -66,7 +52,7 @@ impl DumpObjects {
     /// Create a new [DumpObjects].
     ///
     /// `dump_dir`: The directory path. If `None`, will default to the working directory.
-    /// 
+    ///
     /// `identifier_override`: The file name stem to use when dumping objects. If this is `None`, then the identifier of
     /// each [MemoryBuffer] will be used (with a suffix of `.o`). If this is `Some`, the identifier will be used as a
     /// prefix with an appended counter with names such as `identifier.o`, `identifier.2.o`, `identifier.3.o`, etc.
@@ -85,14 +71,12 @@ impl DumpObjects {
             let Some(ptr) = NonNull::new(ptr) else {
                 crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create DumpObjects instance.");
             };
-            Self {
-                ptr,
-            }
+            Self { ptr }
         }
     }
 }
 
-impl Drop {
+impl Drop for DumpObjects {
     fn drop(&mut self) {
         unsafe {
             LLVMOrcDisposeDumpObjects(self.as_ptr());
