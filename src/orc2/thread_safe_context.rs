@@ -3,6 +3,9 @@ use ::core::{
     ptr::{
         NonNull,
     },
+    mem::{
+        ManuallyDrop,
+    },
 };
 
 use ::llvm_sys::{
@@ -14,6 +17,11 @@ use ::llvm_sys::{
         LLVMOrcDisposeThreadSafeContext,
         LLVMOrcCreateNewThreadSafeModule,
     },
+};
+
+
+use crate::{
+    context::{Context},
 };
 
 
@@ -75,6 +83,29 @@ impl ThreadSafeContext {
             let ptr = LLVMOrcCreateNewThreadSafeContext();
             let Some(ptr) = NonNull::new(ptr) else {
                 crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create ThreadSafeContext.");
+            };
+            Self {
+                ptr,
+            }
+        }
+    }
+
+    /// Create a new [ThreadSafeContext] from an existing [Context]. This will take ownership of the [Context].
+    #[must_use]
+    pub fn from_context(context: Context) -> Self {
+        unsafe {
+            // C API source code:
+            // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l00735]
+            // Documentation:
+            // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga51863e392b2346f7bce719f3faf8fc12]
+            let context = ManuallyDrop::new(context);
+            let ptr = LLVMOrcCreateNewThreadSafeContextFromLLVMContext(context.raw())
+            let Some(ptr) = NonNull::new(ptr) else {
+                crate::support::panic_out_of_memory_error(
+                    file!(),
+                    line!(),
+                    "Unable to create ThreadSafeContext from Context.",
+                );
             };
             Self {
                 ptr,
