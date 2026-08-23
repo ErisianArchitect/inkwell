@@ -65,10 +65,14 @@ impl LLJIT {
 impl Drop for LLJIT {
     fn drop(&mut self) {
         unsafe {
-            // This is an infallible operation.
+            // This should be an infallible operation. TODO: Check if it can fail on prior versions.
             // The [LLVMError] will drop on its own, and does not need to be handled.
             // [https://github.com/llvm/llvm-project/blob/dd8afce5797a6c638840ce17a9a5c6d88ae60d03/llvm/lib/ExecutionEngine/Orc/OrcV2CBindings.cpp#L944]
-            LLVMError::from_error_ref(LLVMOrcDisposeLLJIT(self.as_ptr()));
+            if let Some(error) = LLVMError::from_error_ref(LLVMOrcDisposeLLJIT(self.as_ptr())) {
+                let err_msg = error.take_message();
+                let err_str = err_msg.to_string_lossy();
+                panic!("Failed to drop LLJIT: {err_str}\nFile: {}:{}", file!(), line!());
+            }
         }
     }
 }
