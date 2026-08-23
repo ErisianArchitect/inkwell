@@ -43,9 +43,9 @@ pub mod target_machine_builder;
 [ ]: LLVMOrcIRTransformLayerRef
     [ ]: LLVMOrcIRTransformLayerEmit
     [ ]: LLVMOrcIRTransformLayerSetTransform
-[ ]: LLVMOrcIndirectStubsManagerRef
-    [ ]: LLVMOrcCreateLocalIndirectStubsManager
-    [ ]: LLVMOrcDisposeIndirectStubsManager
+[x]: LLVMOrcIndirectStubsManagerRef
+    [x]: LLVMOrcCreateLocalIndirectStubsManager
+    [x]: LLVMOrcDisposeIndirectStubsManager
 [ ]: LLVMOrcJITDylibRef
     [ ]: LLVMOrcJITDylibClear
     [ ]: LLVMOrcJITDylibCreateResourceTracker
