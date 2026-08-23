@@ -103,7 +103,7 @@ impl ThreadSafeContext {
             // Documentation:
             // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga51863e392b2346f7bce719f3faf8fc12]
             let context = ManuallyDrop::new(context);
-            let ptr = LLVMOrcCreateNewThreadSafeContextFromLLVMContext(context.raw())
+            let ptr = LLVMOrcCreateNewThreadSafeContextFromLLVMContext(context.raw());
             let Some(ptr) = NonNull::new(ptr) else {
                 crate::support::panic_out_of_memory_error(
                     file!(),

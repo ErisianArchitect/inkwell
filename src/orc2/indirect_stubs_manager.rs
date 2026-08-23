@@ -78,7 +78,7 @@ impl IndirectStubsManager {
             let ptr = LLVMOrcCreateLocalIndirectStubsManager(target_triple.as_ptr());
             let Some(ptr) = NonNull::new(ptr) else {
                 crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create IndirectStubsManager.");
-            }
+            };
             Self {
                 ptr,
             }
