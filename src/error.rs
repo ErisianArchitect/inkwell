@@ -109,7 +109,7 @@ impl LLVMErrorMessage {
         }
     }
 
-    /// Produce a [CStr] from this errro message.
+    /// Produce a [CStr] from this error message.
     #[must_use]
     #[inline(always)]
     pub fn as_cstr(&self) -> &CStr {
