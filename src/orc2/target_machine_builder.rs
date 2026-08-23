@@ -65,7 +65,8 @@ impl JITTargetMachineBuilder {
     
     /// Returns the inner [LLVMOrcJITTargetMachineBuilderRef].
     ///
-    /// NOTE: [JITTargetMachineBuilder] is a transparent wrapper around this pointer.
+    /// # NOTE
+    /// [JITTargetMachineBuilder] is a transparent wrapper around this pointer.
     #[must_use]
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcJITTargetMachineBuilderRef {

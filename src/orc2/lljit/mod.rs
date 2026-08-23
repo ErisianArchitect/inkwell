@@ -57,6 +57,10 @@ impl LLJIT {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
 
+    /// Returns the inner [LLVMOrcLLJITRef].
+    ///
+    /// # NOTE
+    /// [LLJIT] is a transparent wrapper around this pointer.
     #[must_use]
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcLLJITRef {
