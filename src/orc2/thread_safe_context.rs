@@ -136,6 +136,9 @@ impl ThreadSafeContext {
     }
 }
 
+unsafe impl Send for ThreadSafeContext {}
+unsafe impl Sync for ThreadSafeContext {}
+
 impl Drop for ThreadSafeContext {
     fn drop(&mut self) {
         unsafe {
