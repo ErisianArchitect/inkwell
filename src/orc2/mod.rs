@@ -105,11 +105,11 @@ pub use thread_safe_module::ThreadSafeModule;
     [ ]: LLVMOrcDisposeSymbols
 [ ]: LLVMOrcSymbolStringPoolRef
     [ ]: LLVMOrcSymbolStringPoolClearDeadEntries
-[ ]: LLVMOrcThreadSafeContextRef
+[x]: LLVMOrcThreadSafeContextRef
     [x]: LLVMOrcCreateNewThreadSafeContext
     [x]: LLVMOrcCreateNewThreadSafeContextFromLLVMContext
     [x]: LLVMOrcDisposeThreadSafeContext
-    [ ]: LLVMOrcCreateNewThreadSafeModule
+    [x]: LLVMOrcCreateNewThreadSafeModule
 [ ]: LLVMOrcThreadSafeModuleRef
     [x]: LLVMOrcDisposeThreadSafeModule
     [ ]: LLVMOrcThreadSafeModuleWithModuleDo
