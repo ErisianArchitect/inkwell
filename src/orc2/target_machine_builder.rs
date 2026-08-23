@@ -1,32 +1,20 @@
-
 use ::core::{
-    ptr::{
-        self,
-        NonNull,
-    },
-    mem::{
-        ManuallyDrop,
-    },
+    mem::ManuallyDrop,
+    ptr::{self, NonNull},
 };
 
-use ::llvm_sys::{
-    orc2::{
-        LLVMOrcJITTargetMachineBuilderCreateFromTargetMachine,
-        LLVMOrcOpaqueJITTargetMachineBuilder,
-        LLVMOrcJITTargetMachineBuilderRef,
-        LLVMOrcDisposeJITTargetMachineBuilder,
-        LLVMOrcJITTargetMachineBuilderDetectHost,
-        LLVMOrcJITTargetMachineBuilderSetTargetTriple,
-        LLVMOrcJITTargetMachineBuilderGetTargetTriple,
-    },
+use ::llvm_sys::orc2::{
+    LLVMOrcDisposeJITTargetMachineBuilder, LLVMOrcJITTargetMachineBuilderCreateFromTargetMachine,
+    LLVMOrcJITTargetMachineBuilderDetectHost, LLVMOrcJITTargetMachineBuilderGetTargetTriple,
+    LLVMOrcJITTargetMachineBuilderRef, LLVMOrcJITTargetMachineBuilderSetTargetTriple,
+    LLVMOrcOpaqueJITTargetMachineBuilder,
 };
 
 use crate::{
+    error::LLVMError,
+    support::LLVMString,
     targets::{TargetMachine, TargetTriple},
-    error::{LLVMError},
-    support::{LLVMString},
 };
-
 
 // [https://llvm.org/doxygen/classllvm_1_1orc_1_1JITTargetMachineBuilder.html]
 /// A utility struct for constructing JIT Target Machines.
@@ -48,7 +36,9 @@ impl JITTargetMachineBuilder {
     #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcJITTargetMachineBuilderRef) -> Self {
         unsafe {
-            Self { ptr: NonNull::new_unchecked(ptr) }
+            Self {
+                ptr: NonNull::new_unchecked(ptr),
+            }
         }
     }
 
@@ -62,7 +52,7 @@ impl JITTargetMachineBuilder {
     pub unsafe fn from_raw(ptr: LLVMOrcJITTargetMachineBuilderRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
-    
+
     /// Returns the inner [LLVMOrcJITTargetMachineBuilderRef].
     ///
     /// # NOTE
@@ -89,9 +79,7 @@ impl JITTargetMachineBuilder {
                     "Unable to create JITTargetMachineBuilder from TargetMachine.",
                 );
             };
-            Self {
-                ptr,
-            }
+            Self { ptr }
         }
     }
 
@@ -113,9 +101,7 @@ impl JITTargetMachineBuilder {
             let Some(ptr) = NonNull::new(builder) else {
                 crate::support::panic_out_of_memory_error(file!(), line!(), "Attempt to detect host failed.");
             };
-            Ok(Self {
-                ptr,
-            })
+            Ok(Self { ptr })
         }
     }
 

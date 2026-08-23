@@ -1,29 +1,11 @@
-
 pub mod builder;
 
-use ::core::{
-    ptr::{
-        NonNull,
-    },
-};
+use ::core::ptr::NonNull;
 use std::{ffi::CStr, fmt::Pointer};
 
-use ::llvm_sys::{
-    orc2::{
-        lljit::{
-            LLVMOrcLLJITRef,
-            LLVMOrcOpaqueLLJIT,
-            LLVMOrcDisposeLLJIT,
-            LLVMOrcLLJITGetTripleString,
-        },
-    },
-};
+use ::llvm_sys::orc2::lljit::{LLVMOrcDisposeLLJIT, LLVMOrcLLJITGetTripleString, LLVMOrcLLJITRef, LLVMOrcOpaqueLLJIT};
 
-use crate::{
-    error::{
-        LLVMError,
-    },
-};
+use crate::error::LLVMError;
 
 /// A high-level JIT (Just-In-Time) compiler utility built on top of LLVM's ORC (On-Request-Compilation) V2
 /// architecture.
@@ -42,7 +24,9 @@ impl LLJIT {
     #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcLLJITRef) -> Self {
         unsafe {
-            Self { ptr: NonNull::new_unchecked(ptr) }
+            Self {
+                ptr: NonNull::new_unchecked(ptr),
+            }
         }
     }
 

@@ -1,37 +1,15 @@
-
 use ::core::{
-    ptr::{
-        self,
-        NonNull,
-    },
-    mem::{
-        ManuallyDrop,
-    },
-    ffi::{
-        c_char,
-        CStr,
-    },
-    convert::{
-        Infallible,
-    },
+    convert::Infallible,
+    ffi::{CStr, c_char},
+    mem::ManuallyDrop,
+    ptr::{self, NonNull},
 };
 
-use ::std::{
-    borrow::{
-        Cow,
-    },
-};
+use ::std::borrow::Cow;
 
-use ::llvm_sys::{
-    error::{
-        LLVMOpaqueError,
-        LLVMErrorRef,
-        LLVMConsumeError,
-        LLVMErrorTypeId,
-        LLVMGetErrorTypeId,
-        LLVMGetErrorMessage,
-        LLVMDisposeErrorMessage,
-    },
+use ::llvm_sys::error::{
+    LLVMConsumeError, LLVMDisposeErrorMessage, LLVMErrorRef, LLVMErrorTypeId, LLVMGetErrorMessage, LLVMGetErrorTypeId,
+    LLVMOpaqueError,
 };
 
 /// Errors for operations involving alignment.
@@ -95,27 +73,21 @@ impl LLVMErrorMessage {
     #[must_use]
     #[inline(always)]
     pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            ::core::slice::from_raw_parts(self.as_ptr().cast(), self.len)
-        }
+        unsafe { ::core::slice::from_raw_parts(self.as_ptr().cast(), self.len) }
     }
 
     /// Returns the sequence of raw bytes that also contains the nul-terminator.
     #[must_use]
     #[inline(always)]
     pub fn as_bytes_with_nul(&self) -> &[u8] {
-        unsafe {
-            ::core::slice::from_raw_parts(self.as_ptr().cast(), self.len + 1)
-        }
+        unsafe { ::core::slice::from_raw_parts(self.as_ptr().cast(), self.len + 1) }
     }
 
     /// Produce a [CStr] from this error message.
     #[must_use]
     #[inline(always)]
     pub fn as_cstr(&self) -> &CStr {
-        unsafe {
-            CStr::from_bytes_with_nul_unchecked(self.as_bytes_with_nul())
-        }
+        unsafe { CStr::from_bytes_with_nul_unchecked(self.as_bytes_with_nul()) }
     }
 
     /// Convert to a utf-8 string using a lossy operation.
@@ -135,7 +107,7 @@ impl Drop for LLVMErrorMessage {
 
 // [https://llvm.org/doxygen/classllvm_1_1Error.html]
 /// Internal LLVM error type with context and mandatory checking.
-/// 
+///
 /// # NOTE
 /// This is a transparent wrapper around a non-null version of [LLVMErrorRef].
 #[repr(transparent)]
@@ -149,8 +121,7 @@ impl LLVMError {
     /// Pass an [LLVMErrorRef] returned from an LLVM function. You do not need to perform a null check on the
     /// [LLVMErrorRef], this function does so for you, and returns `None` if it was null.
     pub fn from_error_ref(error: LLVMErrorRef) -> Option<Self> {
-        NonNull::new(error)
-            .map(|ptr| Self { ptr })
+        NonNull::new(error).map(|ptr| Self { ptr })
     }
 
     /// Returns the inner [LLVMErrorRef].
@@ -169,9 +140,7 @@ impl LLVMError {
 
     /// Obtains the class ID of this error, or null if this is a success value.
     pub fn get_type_id(&self) -> LLVMErrorTypeId {
-        unsafe {
-            LLVMGetErrorTypeId(self.as_ptr())
-        }
+        unsafe { LLVMGetErrorTypeId(self.as_ptr()) }
     }
 
     /// Consume the error by turning it into an [LLVMErrorMessage].
@@ -184,10 +153,7 @@ impl LLVMError {
             };
             let cstr = CStr::from_ptr(cstr_ptr);
             let len = cstr.count_bytes();
-            LLVMErrorMessage {
-                ptr,
-                len,
-            }
+            LLVMErrorMessage { ptr, len }
         }
     }
 
@@ -204,9 +170,13 @@ impl LLVMError {
         };
         let msg = err.take_message();
         let str_msg = msg.to_string_lossy();
-        panic!("Infallible operation was not infallible: {}\nFile: {}:{}", str_msg, file!(), line!());
+        panic!(
+            "Infallible operation was not infallible: {}\nFile: {}:{}",
+            str_msg,
+            file!(),
+            line!()
+        );
     }
-
 }
 
 impl Drop for LLVMError {
