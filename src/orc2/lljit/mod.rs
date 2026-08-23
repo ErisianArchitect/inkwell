@@ -36,7 +36,7 @@ impl LLJIT {
     /// # Safety
     /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcLLJITRef].
     #[must_use]
-    #[inline(always)] // Zero-cost abstraction, fine to use inline(always)
+    #[inline]
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
@@ -71,7 +71,7 @@ impl LLJIT {
             let triple_t_cstr = CStr::from_ptr(triple_t_raw_cstr);
             let len = triple_t_cstr.count_bytes();
             let triple_t_bytes = ::core::slice::from_raw_parts(triple_t_cstr.as_ptr().cast::<u8>(), len);
-            // TODO: In theory, a target triple string should be exclusively ASCII, but this is unverified.
+            // TODO (ErisianArchitect): In theory, a target triple string should be exclusively ASCII, but this is unverified.
             str::from_utf8_unchecked(triple_t_bytes)
         }
     }
@@ -80,7 +80,8 @@ impl LLJIT {
 impl Drop for LLJIT {
     fn drop(&mut self) {
         unsafe {
-            // This should be an infallible operation. TODO: Check if it can fail on prior versions.
+            // TODO (ErisianArchitect): Check if it can fail on prior versions.
+            // This should be an infallible operation.
             // The [LLVMError] will drop on its own, and does not need to be handled.
             // [https://github.com/llvm/llvm-project/blob/dd8afce5797a6c638840ce17a9a5c6d88ae60d03/llvm/lib/ExecutionEngine/Orc/OrcV2CBindings.cpp#L944]
             if let Some(error) = LLVMError::from_error_ref(LLVMOrcDisposeLLJIT(self.as_ptr())) {
