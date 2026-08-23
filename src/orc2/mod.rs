@@ -36,8 +36,8 @@ pub mod target_machine_builder;
     [ ]: LLVMOrcCreateCustomCAPIDefinitionGenerator
     [ ]: LLVMOrcDisposeDefinitionGenerator
 [ ]: LLVMOrcDumpObjectsRef
-    [ ]: LLVMOrcCreateDumpObjects
-    [ ]: LLVMOrcDisposeDumpObjects
+    [x]: LLVMOrcCreateDumpObjects
+    [x]: LLVMOrcDisposeDumpObjects
     [ ]: LLVMOrcDumpObjects_CallOperator
 [ ]: LLVMOrcExecutionSessionRef
 [ ]: LLVMOrcIRTransformLayerRef
