@@ -21,7 +21,7 @@ use crate::{
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct JITTargetMachineBuilder {
-    pub(crate) cptr: NonNull<LLVMOrcOpaqueJITTargetMachineBuilder>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueJITTargetMachineBuilder>,
 }
 const _: () = crate::support::assert_niche::<JITTargetMachineBuilder>();
 
