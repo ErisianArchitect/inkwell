@@ -100,7 +100,7 @@ pub mod thread_safe_context;
     [ ]: LLVMOrcSymbolStringPoolClearDeadEntries
 [ ]: LLVMOrcThreadSafeContextRef
     [x]: LLVMOrcCreateNewThreadSafeContext
-    [ ]: LLVMOrcCreateNewThreadSafeContextFromLLVMContext
+    [x]: LLVMOrcCreateNewThreadSafeContextFromLLVMContext
     [x]: LLVMOrcDisposeThreadSafeContext
     [ ]: LLVMOrcCreateNewThreadSafeModule
 [ ]: LLVMOrcThreadSafeModuleRef
