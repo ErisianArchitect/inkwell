@@ -3,6 +3,7 @@ pub mod indirect_stubs_manager;
 pub mod lljit;
 pub mod target_machine_builder;
 pub mod thread_safe_context;
+pub mod thread_safe_module;
 
 // LLVM Documentation for this API can be found here: [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
 // Look for the `Topics` section.
@@ -104,7 +105,7 @@ pub mod thread_safe_context;
     [x]: LLVMOrcDisposeThreadSafeContext
     [ ]: LLVMOrcCreateNewThreadSafeModule
 [ ]: LLVMOrcThreadSafeModuleRef
-    [ ]: LLVMOrcDisposeThreadSafeModule
+    [x]: LLVMOrcDisposeThreadSafeModule
     [ ]: LLVMOrcThreadSafeModuleWithModuleDo
 */
 
