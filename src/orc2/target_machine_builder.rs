@@ -48,7 +48,7 @@ impl JITTargetMachineBuilder {
     /// # Safety
     /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcJITTargetMachineBuilderRef].
     #[must_use]
-    #[inline(always)] // Zero-cost abstraction, fine to use inline(always).
+    #[inline]
     pub unsafe fn from_raw(ptr: LLVMOrcJITTargetMachineBuilderRef) -> Option<Self> {
         NonNull::new(ptr).map(|ptr| Self { ptr })
     }
