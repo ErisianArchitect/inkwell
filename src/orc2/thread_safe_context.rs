@@ -22,6 +22,10 @@ use ::llvm_sys::{
 
 use crate::{
     context::{Context},
+    module::{Module},
+    orc2::{
+        ThreadSafeModule,
+    },
 };
 
 
@@ -108,6 +112,24 @@ impl ThreadSafeContext {
                 );
             };
             Self {
+                ptr,
+            }
+        }
+    }
+
+    // No lifetime is needed!
+    /// Create a [ThreadSafeModule] wrapper from a [Module].
+    pub fn create_module(&self, module: Module) -> ThreadSafeModule {
+        unsafe {
+            // C API source code
+            // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l00752]
+            // Documentation
+            // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga752b1bce0950613ac2f61de75da0e8c6]
+            let module = ManuallyDrop::new(module);
+            let Some(ptr) = NonNull::new(LLVMOrcCreateNewThreadSafeModule(module.as_mut_ptr(), self.as_ptr())) else {
+                crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create ThreadSafeModule.");
+            };
+            ThreadSafeModule {
                 ptr,
             }
         }
