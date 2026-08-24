@@ -110,9 +110,9 @@ pub use thread_safe_module::ThreadSafeModule;
     [x]: LLVMOrcCreateNewThreadSafeContextFromLLVMContext
     [x]: LLVMOrcDisposeThreadSafeContext
     [x]: LLVMOrcCreateNewThreadSafeModule
-[ ]: LLVMOrcThreadSafeModuleRef
+[x]: LLVMOrcThreadSafeModuleRef
     [x]: LLVMOrcDisposeThreadSafeModule
-    [ ]: LLVMOrcThreadSafeModuleWithModuleDo
+    [x]: LLVMOrcThreadSafeModuleWithModuleDo
 */
 
 /* ---| NOTES:
