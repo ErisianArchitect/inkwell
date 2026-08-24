@@ -58,6 +58,9 @@ pub(crate) struct IrModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R 
 ///
 /// Whatever function uses this callback must choose what to do with the [catch_unwind] panic payload. The recommended
 /// action is [resume_unwind].
+///
+/// # Safety:
+/// This callback expectes that `ctx` points to valid [IrModuleOperator] with the same generics as this function.
 pub(crate) extern "C" fn generic_ir_module_operation<
     // Ferris bless the Rust Project for generic extern "C" functions.
     F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe,
