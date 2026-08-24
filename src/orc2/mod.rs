@@ -43,10 +43,10 @@ pub use thread_safe_module::ThreadSafeModule;
 [ ]: LLVMOrcDefinitionGeneratorRef
     [ ]: LLVMOrcCreateCustomCAPIDefinitionGenerator
     [ ]: LLVMOrcDisposeDefinitionGenerator
-[ ]: LLVMOrcDumpObjectsRef
+[x]: LLVMOrcDumpObjectsRef
     [x]: LLVMOrcCreateDumpObjects
     [x]: LLVMOrcDisposeDumpObjects
-    [ ]: LLVMOrcDumpObjects_CallOperator
+    [x]: LLVMOrcDumpObjects_CallOperator
 [ ]: LLVMOrcExecutionSessionRef
 [ ]: LLVMOrcIRTransformLayerRef
     [ ]: LLVMOrcIRTransformLayerEmit
