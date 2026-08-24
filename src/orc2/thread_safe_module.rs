@@ -40,12 +40,25 @@ use crate::{
     module::{Module},
 };
 
+/// A utility struct that stores a [FnOnce] closure, that receives the return value of the function.
+/// The return value that is stored is a `Result<R, Box<dyn Any + Send + 'static>>`. This is the [catch_unwind] panic
+/// payload. [ThreadSafeModule::with_module_do] will resume the panic if the return value in `Err(payload)`.
 pub(crate) struct IrModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> {
     pub(crate) func: Option<F>,
     pub(crate) return_value: Option<Result<R, Box<dyn Any + Send + 'static>>>,
 }
 
-extern "C" fn generic_ir_module_operation<
+/// The callback used by [ThreadSafeModule::with_module_do] to mutate the inner [Module].
+///
+/// This callback takes a `*mut c_void` which is then converted into an `&mut IRModuleOperation<F, R>`. This
+/// [IRModuleOperation] contains a [FnOnce] callback, and a storage slot for the return value.
+///
+/// If the callback in the [IRModuleOperation] panics when it is called, the panic will be caught with [catch_unwind].
+/// The payload of that panic is assigned to the `Err` slot of the `return_value` field of [IRModuleOperation].
+///
+/// Whatever function uses this callback must choose what to do with the [catch_unwind] panic payload. The recommended
+/// action is [resume_unwind].
+pub(crate) extern "C" fn generic_ir_module_operation<
     // Ferris bless the Rust Project for generic extern "C" functions.
     F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe,
     R,
@@ -130,7 +143,9 @@ impl ThreadSafeModule {
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga91c2fe589434e8b16812b5e8d42cf9c6]
         let mut op = IrModuleOperation::new(f);
         unsafe {
-            // This result should not ever be non-null. According to the LLVM source code, that wouldn't make sense.
+            // This result should always be null. According to the LLVM source code, that wouldn't make sense, as the
+            // error is user provided, and we aren't providing an error value (generic_ir_module_operation returns
+            // null_mut).
             let result = LLVMOrcThreadSafeModuleWithModuleDo(
                 self.as_ptr(),
                 generic_ir_module_operation::<F, R>,

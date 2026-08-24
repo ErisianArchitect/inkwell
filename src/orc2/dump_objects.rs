@@ -20,6 +20,7 @@ use crate::{
     },
 };
 
+// TODO (ErisianArchitect): DumpObjects documentation.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct DumpObjects {
