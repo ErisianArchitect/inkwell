@@ -1,12 +1,24 @@
-use ::core::ptr::NonNull;
+use ::core::{
+    ptr::NonNull,
+    mem::{
+        ManuallyDrop,
+    },
+};
 
 use ::std::borrow::Cow;
 
 use ::llvm_sys::orc2::{
     LLVMOrcCreateDumpObjects, LLVMOrcDisposeDumpObjects, LLVMOrcDumpObjectsRef, LLVMOrcOpaqueDumpObjects,
+    LLVMOrcDumpObjects_CallOperator,
 };
 
-use crate::support::to_c_str;
+use crate::{
+    support::to_c_str,
+    memory_buffer::{MemoryBuffer},
+    error::{
+        LLVMError,
+    },
+};
 
 #[repr(transparent)]
 #[derive(Debug)]
@@ -76,6 +88,30 @@ impl DumpObjects {
                 crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to create DumpObjects instance.");
             };
             Self { ptr }
+        }
+    }
+
+    /// Dump the contents of a [MemoryBuffer]. This function takes ownership of the [MemoryBuffer], and returns the same
+    /// [MemoryBuffer] on success. On error, the [MemoryBuffer] is lost.
+    pub fn dump_memory_buffer<'a>(&mut self, buffer: MemoryBuffer<'a>) -> Result<MemoryBuffer<'a>, LLVMError> {
+        unsafe {
+            // C++ API source code:
+            // [https://llvm.org/doxygen/DebugUtils_8cpp_source.html#l00316]
+            // C API source code:
+            // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l00887]
+            // Documentation:
+            // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#gaf4d392b79ca864cc66ebb9e7be4fc920]
+            let buffer = ManuallyDrop::new(buffer);
+            let mut buffer_ptr = buffer.as_mut_ptr();
+            let result = LLVMError::from_error_ref(LLVMOrcDumpObjects_CallOperator(
+                self.as_ptr(),
+                &mut buffer_ptr as *mut _,
+            ));
+            if let Some(error) = result {
+                return Err(error);
+            }
+            let buffer = MemoryBuffer::new(buffer_ptr);
+            Ok(buffer)
         }
     }
 }
