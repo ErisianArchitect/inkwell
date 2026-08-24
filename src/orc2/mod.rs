@@ -1,15 +1,17 @@
 mod dump_objects;
+mod enums;
 mod indirect_stubs_manager;
 mod lljit;
 mod target_machine_builder;
 mod thread_safe_context;
 mod thread_safe_module;
 
-pub use dump_objects::DumpObjects;
-pub use indirect_stubs_manager::IndirectStubsManager;
-pub use target_machine_builder::JITTargetMachineBuilder;
-pub use thread_safe_context::ThreadSafeContext;
-pub use thread_safe_module::ThreadSafeModule;
+pub use dump_objects::*;
+pub use enums::*;
+pub use indirect_stubs_manager::*;
+pub use target_machine_builder::*;
+pub use thread_safe_context::*;
+pub use thread_safe_module::*;
 
 // LLVM Documentation for this API can be found here: [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
 // Look for the `Topics` section.
@@ -87,6 +89,7 @@ pub use thread_safe_module::ThreadSafeModule;
     [ ]: LLVMOrcCreateCustomMaterializationUnit
     [ ]: LLVMOrcLazyReexports
     [ ]: LLVMOrcAbsoluteSymbols
+    [ ]: LLVMOrcMaterializationUnitMaterializeFunction
 [ ]: LLVMOrcObjectLayerRef
     [ ]: LLVMOrcDisposeObjectLayer
     [ ]: LLVMOrcRTDyldObjectLinkingLayerRegisterJITEventListener
@@ -113,6 +116,21 @@ pub use thread_safe_module::ThreadSafeModule;
 [x]: LLVMOrcThreadSafeModuleRef
     [x]: LLVMOrcDisposeThreadSafeModule
     [x]: LLVMOrcThreadSafeModuleWithModuleDo
+[x]: Enums
+    [x]: LLVMJITSymbolGenericFlags
+    [x]: LLVMOrcJITDylibLookupFlags
+    [x]: LLVMOrcLookupKind
+    [x]: LLVMOrcSymbolLookupFlags
+[ ]: Callbacks
+    [ ]: LLVMOrcCAPIDefinitionGeneratorTryToGenerateFunction
+    [ ]: LLVMOrcErrorReporterFunction
+    [ ]: LLVMOrcExecutionSessionLookupHandleResultFunction
+    [x]: LLVMOrcGenericIRModuleOperationFunction
+    [ ]: LLVMOrcIRTransformLayerTransformFunction
+    [ ]: LLVMOrcMaterializationUnitDestroyFunction
+    [ ]: LLVMOrcMaterializationUnitDiscardFunction
+    [ ]: LLVMOrcMaterializationUnitMaterializeFunction
+    [ ]: LLVMOrcObjectTransformLayerTransformFunction
 */
 
 /* ---| NOTES:
