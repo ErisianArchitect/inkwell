@@ -1,12 +1,17 @@
-pub mod builder;
+mod builder;
+
+pub use builder::*;
 
 use ::core::{
     ptr::NonNull,
     ffi::{
         c_char,
     },
+    marker::{
+        PhantomData,
+    },
 };
-use std::{ffi::CStr, fmt::Pointer};
+use std::{ffi::CStr};
 
 use ::llvm_sys::orc2::lljit::{
     LLVMOrcDisposeLLJIT, LLVMOrcLLJITGetTripleString, LLVMOrcLLJITRef, LLVMOrcOpaqueLLJIT,
@@ -26,7 +31,12 @@ use ::llvm_sys::orc2::lljit::{
     LLVMOrcLLJITLookup,
 };
 
-use crate::error::LLVMError;
+use crate::{
+    error::LLVMError,
+    orc2::{
+        JITDylibRef,
+    },
+};
 
 /// A high-level JIT (Just-In-Time) compiler utility built on top of LLVM's ORC (On-Request-Compilation) V2
 /// architecture.
@@ -135,6 +145,19 @@ impl LLJIT {
             Err(err) => {
                 panic!("LLVMOrcLLJITGetDataLayoutStr returned non-utf8 string, which is unexpected.\n{err}");
             }
+        }
+    }
+
+    /// Return a reference to the Main JITDylib.
+    pub fn get_main_jit_dylib(&self) -> JITDylibRef<'_> {
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#ga478f97fd14db71cfdd01136df14e218c]
+        let Some(ptr) = NonNull::new(unsafe { LLVMOrcLLJITGetMainJITDylib(self.as_ptr()) }) else {
+            panic!("Unable to get the main JITDylib. The returned pointer was null.\nFile: {}:{}", file!(), line!());
+        };
+        JITDylibRef {
+            ptr,
+            _phantom: PhantomData,
         }
     }
 }
