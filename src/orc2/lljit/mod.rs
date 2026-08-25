@@ -105,6 +105,36 @@ impl LLJIT {
             LLVMOrcLLJITGetGlobalPrefix(self.as_ptr())
         }
     }
+
+    /// Get the data layout string for this [LLJIT] instance.
+    pub fn get_data_layout_str(&self) -> &str {
+        // Data layout strings appears to be all ASCII text. So it should be safe to interpret it as a utf-8 string.
+        // [https://cnlelema.github.io/memo/en/compilers/llvm/data-layout/]
+        // C API source code:
+        // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l01179]
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#ga439fbf215a33566faac5d1cdecff89f4]
+        // The string is borrowed, not owned.
+        let data_layout_c_str = unsafe { LLVMOrcLLJITGetDataLayoutStr(self.as_ptr()) };
+        assert!(
+            !data_layout_c_str.is_null(),
+            "LLVMOrcLLJITGetDataLayoutStr returned a null pointer, which is unexpected.",
+        );
+        // SAFETY: The above assertion already verified that it's non-null.
+        let data_layout_c_str = unsafe {
+            CStr::from_ptr(data_layout_c_str) };
+            let byte_slice = unsafe { ::core::slice::from_raw_parts(
+                data_layout_c_str.as_ptr().cast::<u8>(),
+                data_layout_c_str.count_bytes(),
+            )
+        };
+        match str::from_utf8(byte_slice) {
+            Ok(data_layout_str) => data_layout_str,
+            Err(err) => {
+                panic!("LLVMOrcLLJITGetDataLayoutStr returned non-utf8 string.\n{err}");
+            }
+        }
+    }
 }
 
 impl Drop for LLJIT {
