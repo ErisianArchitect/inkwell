@@ -107,7 +107,7 @@ impl ThreadSafeModule {
     /// # Safety
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
     /// [LLVMOrcThreadSafeModuleRef].
-    pub fn from_raw_unchecked(ptr: LLVMOrcThreadSafeModuleRef) -> Self {
+    pub unsafe fn from_raw_unchecked(ptr: LLVMOrcThreadSafeModuleRef) -> Self {
         unsafe {
             Self {
                 ptr: NonNull::new_unchecked(ptr),
@@ -120,7 +120,7 @@ impl ThreadSafeModule {
     ///
     /// # Safety
     /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcThreadSafeModuleRef].
-    pub fn from_raw(ptr: LLVMOrcThreadSafeModuleRef) -> Option<Self> {
+    pub unsafe fn from_raw(ptr: LLVMOrcThreadSafeModuleRef) -> Option<Self> {
         Some(Self {
             ptr: NonNull::new(ptr)?,
         })
