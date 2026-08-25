@@ -91,15 +91,6 @@ pub(crate) extern "C" fn generic_ir_module_operation<
     ptr::null_mut()
 }
 
-impl<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> IrModuleOperation<F, R> {
-    pub(crate) fn new(func: F) -> Self {
-        Self {
-            func: Some(func),
-            return_value: None,
-        }
-    }
-}
-
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ThreadSafeModule {
@@ -155,7 +146,10 @@ impl ThreadSafeModule {
         // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l00744]
         // Documentation:
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga91c2fe589434e8b16812b5e8d42cf9c6]
-        let mut op = IrModuleOperation::new(f);
+        let mut op = IrModuleOperation {
+            func: Some(f),
+            return_value: None,
+        };
         unsafe {
             // This result should always be null. According to the LLVM source code, it wouldn't make sense for it to be
             // non-null, as the error is user provided, and we aren't providing an error value
