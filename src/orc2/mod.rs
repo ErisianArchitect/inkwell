@@ -1,6 +1,7 @@
 mod dump_objects;
 mod enums;
 mod indirect_stubs_manager;
+mod jit_dylib;
 mod target_machine_builder;
 mod thread_safe_context;
 mod thread_safe_module;
@@ -10,14 +11,18 @@ pub mod lljit;
 pub use dump_objects::*;
 pub use enums::*;
 pub use indirect_stubs_manager::*;
+pub use jit_dylib::*;
 pub use target_machine_builder::*;
 pub use thread_safe_context::*;
 pub use thread_safe_module::*;
 
-// LLVM Documentation for this API can be found here: [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
-// Look for the `Topics` section.
+// ORC Design and Implementation:
+// [https://llvm.org/docs/ORCv2.html]
+// LLVM Documentation for this API can be found here:
 // [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
-// [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html]
+// --: Look for the `Topics` section.
+//     [https://llvm.org/doxygen/group__LLVMCExecutionEngine.html]
+//     [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html]
 
 /* ---| Completion Status:
 [ ]: LLVMOrcLLJITBuilderRef
@@ -29,7 +34,7 @@ pub use thread_safe_module::*;
     [x]: LLVMOrcCreateLLJIT
     [x]: LLVMOrcDisposeLLJIT
     [x]: LLVMOrcLLJITGetGlobalPrefix
-    [ ]: LLVMOrcLLJITGetMainJITDylib
+    [x]: LLVMOrcLLJITGetMainJITDylib
     [ ]: LLVMOrcLLJITEnableDebugSupport
     [ ]: LLVMOrcLLJITGetObjectLinkingLayer
     [ ]: LLVMOrcLLJITGetExecutionSession
@@ -147,4 +152,13 @@ Available on versions:
 - llvm20-1
 - llvm21-1
 - llvm22-1
+
+# ORC Design and Implementation Notes:
+[https://llvm.org/docs/ORCv2.html]
+
+## Eager and Lazy Compilation
+ORC uses eager compilation by default, and will compile symbols
+as soon as they are looked up in the JIT session object.
+There is also support for lazy compilation, of course.
+
 */
