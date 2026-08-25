@@ -1,10 +1,11 @@
 mod dump_objects;
 mod enums;
 mod indirect_stubs_manager;
-mod lljit;
 mod target_machine_builder;
 mod thread_safe_context;
 mod thread_safe_module;
+
+pub mod lljit;
 
 pub use dump_objects::*;
 pub use enums::*;
@@ -27,7 +28,7 @@ pub use thread_safe_module::*;
 [ ]: LLVMOrcLLJITRef
     [x]: LLVMOrcCreateLLJIT
     [x]: LLVMOrcDisposeLLJIT
-    [ ]: LLVMOrcLLJITGetGlobalPrefix
+    [x]: LLVMOrcLLJITGetGlobalPrefix
     [ ]: LLVMOrcLLJITGetMainJITDylib
     [ ]: LLVMOrcLLJITEnableDebugSupport
     [ ]: LLVMOrcLLJITGetObjectLinkingLayer
