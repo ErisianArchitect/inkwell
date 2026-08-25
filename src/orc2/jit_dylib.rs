@@ -22,6 +22,7 @@ use crate::{
     },
 };
 
+// TODO (ErisianArchitect): Documentation.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct JITDylibRef<'lljit> {
