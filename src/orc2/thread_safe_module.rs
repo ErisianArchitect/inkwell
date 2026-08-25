@@ -72,7 +72,13 @@ pub(crate) extern "C" fn generic_ir_module_operation<
     let mut module = ManuallyDrop::new(unsafe { Module::new(module) });
     // SAFETY: Only a valid pointer will ever be passed to this function.
     let callback = unsafe { ctx.cast::<IrModuleOperation<F, R>>().as_mut_unchecked() };
-    // In practice, this will never be None.
+    // If generic_ir_module_operator is used correctly, this should
+    // never be `None` at this point. It is assigned a value in
+    // `with_module_do`. If it is `None` for whatever reason, there
+    // is not much that can be done since panicking is not allowed in
+    // this function. But the error will get passed on to
+    // `with_module_do` in the form of the `return_value` field being
+    // `None`.
     if let Some(func) = callback.func.take() {
         let unwind_result = catch_unwind(move || {
             func(&mut module)
