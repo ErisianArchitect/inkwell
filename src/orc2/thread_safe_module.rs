@@ -43,8 +43,8 @@ use crate::{
 /// A utility struct that stores a [FnOnce] closure, and receives the return value of the function.
 /// The return value that is stored in a `Result<R, Box<dyn Any + Send + 'static>>`. The error is a [catch_unwind] panic
 /// payload. [ThreadSafeModule::with_module_do] will resume the panic if the return value is `Err(payload)`.
-pub(crate) struct IrModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> {
-    pub(crate) func: Option<F>,
+#[derive(Debug)]
+pub(crate) struct IrModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> {    pub(crate) func: Option<F>,
     pub(crate) return_value: Option<Result<R, Box<dyn Any + Send + 'static>>>,
 }
 
@@ -164,6 +164,8 @@ impl ThreadSafeModule {
             let Some(result) = op.return_value else {
                 // If this error occurs, that means that the code that was supposed to set the return_value was
                 // modified. Or otherwise something that I couldn't anticipate has happened.
+                // A likely cause for this error is the `IRModuleOperation.func` field being `None` when passed as
+                // a context to the generic_ir_module_operation function.
                 panic!("Return value was None, which is unexpected.\nFile: {}:{}", file!(), line!());
             };
             match result {
