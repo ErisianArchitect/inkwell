@@ -1,9 +1,30 @@
 pub mod builder;
 
-use ::core::ptr::NonNull;
+use ::core::{
+    ptr::NonNull,
+    ffi::{
+        c_char,
+    },
+};
 use std::{ffi::CStr, fmt::Pointer};
 
-use ::llvm_sys::orc2::lljit::{LLVMOrcDisposeLLJIT, LLVMOrcLLJITGetTripleString, LLVMOrcLLJITRef, LLVMOrcOpaqueLLJIT};
+use ::llvm_sys::orc2::lljit::{
+    LLVMOrcDisposeLLJIT, LLVMOrcLLJITGetTripleString, LLVMOrcLLJITRef, LLVMOrcOpaqueLLJIT,
+    LLVMOrcLLJITGetGlobalPrefix,
+    LLVMOrcLLJITGetMainJITDylib,
+    LLVMOrcLLJITEnableDebugSupport,
+    LLVMOrcLLJITGetObjectLinkingLayer,
+    LLVMOrcLLJITGetExecutionSession,
+    LLVMOrcLLJITGetIRTransformLayer,
+    LLVMOrcLLJITGetObjTransformLayer,
+    LLVMOrcLLJITGetDataLayoutStr,
+    LLVMOrcLLJITAddObjectFile,
+    LLVMOrcLLJITAddLLVMIRModule,
+    LLVMOrcLLJITMangleAndIntern,
+    LLVMOrcLLJITAddObjectFileWithRT,
+    LLVMOrcLLJITAddLLVMIRModuleWithRT,
+    LLVMOrcLLJITLookup,
+};
 
 use crate::error::LLVMError;
 
@@ -73,6 +94,15 @@ impl LLJIT {
             let triple_t_bytes = ::core::slice::from_raw_parts(triple_t_cstr.as_ptr().cast::<u8>(), len);
             // TODO (ErisianArchitect): In theory, a target triple string should be exclusively ASCII, but this is unverified.
             str::from_utf8_unchecked(triple_t_bytes)
+        }
+    }
+
+    /// Returns the global prefix character according to the data layout of this [LLJIT].
+    #[must_use]
+    pub fn get_global_prefix(&self) -> c_char {
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#gaa7cb85ad57567365835f63b01eb9662e]
+        unsafe {
+            LLVMOrcLLJITGetGlobalPrefix(self.as_ptr())
         }
     }
 }
