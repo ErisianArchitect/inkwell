@@ -107,6 +107,8 @@ impl LLJIT {
     }
 
     /// Get the data layout string for this [LLJIT] instance.
+    ///
+    /// The pointer to the returned string is a valid C-String with a nul-terminator.
     pub fn get_data_layout_str(&self) -> &str {
         // Data layout strings appears to be all ASCII text. So it should be safe to interpret it as a utf-8 string.
         // [https://cnlelema.github.io/memo/en/compilers/llvm/data-layout/]
@@ -131,7 +133,7 @@ impl LLJIT {
         match str::from_utf8(byte_slice) {
             Ok(data_layout_str) => data_layout_str,
             Err(err) => {
-                panic!("LLVMOrcLLJITGetDataLayoutStr returned non-utf8 string.\n{err}");
+                panic!("LLVMOrcLLJITGetDataLayoutStr returned non-utf8 string, which is unexpected.\n{err}");
             }
         }
     }
