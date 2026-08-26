@@ -22,11 +22,11 @@ pub struct LLJITBuilder {
 const _: () = crate::support::assert_niche::<LLJITBuilder>();
 
 impl LLJITBuilder {
-    /// Unchecked creation of an [LLJITBuilder] from an [LLVMOrcLLJITBuilderRef].
+    /// Create an [LLJITBuilder] instance from a raw [LLVMOrcLLJITBuilderRef] without checking if it is null.
     ///
     /// # Safety
-    /// This function produces an unchecked [NonNull] from the pointer that is provided, which can cause undefined
-    /// behavior if it is null or does not point to a valid LLJITBuilder.
+    /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
+    /// [LLVMOrcLLJITBuilderRef].
     #[must_use]
     #[inline(always)] // zero-cost abstractions, fine to mark as inline(always).
     pub unsafe fn from_raw_unchecked(ptr: LLVMOrcLLJITBuilderRef) -> Self {
@@ -37,10 +37,11 @@ impl LLJITBuilder {
         }
     }
 
-    /// Attempt to create an [LLJITBuilder] from a raw pointer.
+    /// Create an [LLJITBuilder] instance from a raw [LLVMOrcLLJITBuilderRef]. This function will only ensure that the
+    /// pointer is non-null, it cannot verify that the reference is valid.
     ///
     /// # Safety
-    /// This function assumes that the pointer provided is a valid reference to [LLVMOrcLLJITBuilder].
+    /// Will cause Undefined Behavior if the pointer does not point to a valid [LLVMOrcLLJITBuilderRef].
     #[must_use]
     #[inline]
     pub unsafe fn from_raw(ptr: LLVMOrcLLJITBuilderRef) -> Option<Self> {
