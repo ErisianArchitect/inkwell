@@ -126,7 +126,7 @@ pub(crate) extern "C" fn generic_ir_module_operation<
             Err(payload) => IRModuleOpState::Panic(payload),
         };
     } else {
-        // This is how the `with_module_do` (or whatever function that uses this) is notified of this specific failure.
+        // This is how `with_module_do` (or whatever function that uses this) is notified of this specific failure.
         callback.state = IRModuleOpState::MissingFunc;
     }
     // We aren't using LLVMError, it's not necessary, and only complicates the API.
