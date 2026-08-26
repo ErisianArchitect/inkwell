@@ -143,7 +143,7 @@ pub struct ThreadSafeModule {
 
 impl ThreadSafeModule {
     
-    /// Create an [ThreadSafeModule] instance from a raw [LLVMOrcThreadSafeModuleRef] without checking if it is null.
+    /// Create a [ThreadSafeModule] instance from a raw [LLVMOrcThreadSafeModuleRef] without checking if it is null.
     ///
     /// # Safety
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
@@ -156,7 +156,7 @@ impl ThreadSafeModule {
         }
     }
 
-    /// Create an [ThreadSafeModule] instance from a raw [LLVMOrcThreadSafeModuleRef]. This function will only
+    /// Create a [ThreadSafeModule] instance from a raw [LLVMOrcThreadSafeModuleRef]. This function will only
     /// ensure that the pointer is non-null, it cannot verify that the reference is valid.
     ///
     /// # Safety
@@ -166,7 +166,8 @@ impl ThreadSafeModule {
             ptr: NonNull::new(ptr)?,
         })
     }
-    
+
+    // TODO (ErisianArchitect): Documentation.
     #[must_use]
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcThreadSafeModuleRef {

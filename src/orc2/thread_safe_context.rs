@@ -38,7 +38,7 @@ pub struct ThreadSafeContext {
 }
 
 impl ThreadSafeContext {
-    /// Create an [ThreadSafeContext] instance from a raw [LLVMOrcThreadSafeContextRef] without checking if it is null.
+    /// Create a [ThreadSafeContext] instance from a raw [LLVMOrcThreadSafeContextRef] without checking if it is null.
     ///
     /// # Safety
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
@@ -53,7 +53,7 @@ impl ThreadSafeContext {
         }
     }
 
-    /// Create an [ThreadSafeContext] instance from a raw [LLVMOrcThreadSafeContextRef]. This function will only
+    /// Create a [ThreadSafeContext] instance from a raw [LLVMOrcThreadSafeContextRef]. This function will only
     /// ensure that the pointer is non-null, it cannot verify that the reference is valid.
     ///
     /// # Safety

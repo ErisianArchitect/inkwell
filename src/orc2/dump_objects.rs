@@ -28,7 +28,7 @@ pub struct DumpObjects {
 }
 
 impl DumpObjects {
-    /// Create an [DumpObjects] instance from a raw [LLVMOrcDumpObjectsRef] without checking if it is null.
+    /// Create a [DumpObjects] instance from a raw [LLVMOrcDumpObjectsRef] without checking if it is null.
     ///
     /// # Safety
     /// Will cause Undefined Behavior if the pointer is either null, or does not point to a valid
@@ -43,7 +43,7 @@ impl DumpObjects {
         }
     }
 
-    /// Create an [DumpObjects] instance from a raw [LLVMOrcDumpObjectsRef]. This function will only ensure that the
+    /// Create a [DumpObjects] instance from a raw [LLVMOrcDumpObjectsRef]. This function will only ensure that the
     /// pointer is non-null, it cannot verify that the reference is valid.
     ///
     /// # Safety
