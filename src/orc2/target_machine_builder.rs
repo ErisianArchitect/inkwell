@@ -26,7 +26,7 @@ pub struct JITTargetMachineBuilder {
 const _: () = crate::support::assert_niche::<JITTargetMachineBuilder>();
 
 impl JITTargetMachineBuilder {
-    /// Create an [JITTargetMachineBuilder] instance from a raw [LLVMOrcJITTargetMachineBuilderRef] without checking if
+    /// Create a [JITTargetMachineBuilder] instance from a raw [LLVMOrcJITTargetMachineBuilderRef] without checking if
     /// it is null.
     ///
     /// # Safety
@@ -42,7 +42,7 @@ impl JITTargetMachineBuilder {
         }
     }
 
-    /// Create an [JITTargetMachineBuilder] instance from a raw [LLVMOrcJITTargetMachineBuilderRef]. This function will
+    /// Create a [JITTargetMachineBuilder] instance from a raw [LLVMOrcJITTargetMachineBuilderRef]. This function will
     /// only ensure that the pointer is non-null, it cannot verify that the reference is valid.
     ///
     /// # Safety
