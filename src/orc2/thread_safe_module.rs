@@ -40,27 +40,52 @@ use crate::{
     module::{Module},
 };
 
+/// A sort of state machine for [IRModuleOperation].
+#[derive(Debug)]
+pub(crate) enum IRModuleOpState<
+    F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R,
+    R,
+> {
+    /// The inner value was taken, but nothing was put back.
+    Taken,
+    /// This is the intended initial state.
+    Func(F),
+    /// This is where the return value for the `Func` variant is stored.
+    Return(R),
+    /// If a panic occurs in the non-panicking `generic_ir_module_operation` function, it will end up here.
+    Panic(Box<dyn Any + Send + 'static>),
+    /// The [IRModuleOpState::Func] variant was expected, but the value encountered was a different variant.
+    MissingFunc,
+}
+
+impl<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R, R> IRModuleOpState<F, R> {
+    #[must_use]
+    pub fn take(&mut self) -> Self {
+        ::core::mem::replace(self, Self::Taken)
+    }
+}
+
 /// A utility struct that stores a [FnOnce] closure, and receives the return value of the function.
 /// The return value that is stored in a `Result<R, Box<dyn Any + Send + 'static>>`. The error is a [catch_unwind] panic
 /// payload. [ThreadSafeModule::with_module_do] will resume the panic if the return value is `Err(payload)`.
 #[derive(Debug)]
-pub(crate) struct IrModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> {    pub(crate) func: Option<F>,
-    pub(crate) return_value: Option<Result<R, Box<dyn Any + Send + 'static>>>,
+pub(crate) struct IRModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> {
+    pub(crate) state: IRModuleOpState<F, R>,
 }
 
 /// The callback used by [ThreadSafeModule::with_module_do] to mutate the inner [Module].
 ///
 /// This callback takes a `*mut c_void` which is then converted into an `&mut IRModuleOperation<F, R>`. This
-/// [IRModuleOperation] contains a [FnOnce] callback, and a storage slot for the return value.
+/// [IRModuleOperation] is initialized with the [FnOnce] callback.
 ///
 /// If the callback in the [IRModuleOperation] panics when it is called, the panic will be caught with [catch_unwind].
-/// The payload of that panic is assigned to the `Err` slot of the `return_value` field of [IRModuleOperation].
+/// The payload of that panic is assigned to the `state` field of [IRModuleOperation] as [IRModuleOpState::Panic].
 ///
 /// Whatever function uses this callback must choose what to do with the [catch_unwind] panic payload. The recommended
 /// action is [resume_unwind].
 ///
 /// # Safety:
-/// This callback expectes that `ctx` points to valid [IrModuleOperator] with the same generics as this function.
+/// This callback expects that `ctx` points to valid [IrModuleOperator] with the same generics as this function.
 pub(crate) extern "C" fn generic_ir_module_operation<
     // Ferris bless the Rust Project for generic extern "C" functions.
     F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe,
@@ -68,22 +93,41 @@ pub(crate) extern "C" fn generic_ir_module_operation<
 >(ctx: *mut c_void, module: LLVMModuleRef) -> LLVMErrorRef {
     // IMPORTANT: You cannot panic in this function, because it returns control to LLVM.
     //            Panicking here would be undefined behavior.
-    // SAFETY: LLVMModuleRef is coming directly from LLVM, and should be a valid pointer.
-    let mut module = ManuallyDrop::new(unsafe { Module::new(module) });
-    // SAFETY: Only a valid pointer will ever be passed to this function.
-    let callback = unsafe { ctx.cast::<IrModuleOperation<F, R>>().as_mut_unchecked() };
-    // If generic_ir_module_operator is used correctly, this should
-    // never be `None` at this point. It is assigned a value in
-    // `with_module_do`. If it is `None` for whatever reason, there
-    // is not much that can be done since panicking is not allowed in
-    // this function. But the error will get passed on to
-    // `with_module_do` in the form of the `return_value` field being
-    // `None`.
-    if let Some(func) = callback.func.take() {
+    // SAFETY: Only a valid pointer should ever be passed to this function.
+    let callback = unsafe { ctx.cast::<IRModuleOperation<F, R>>().as_mut_unchecked() };
+    // Module::new can panic, so we have to anticipate that happening and use `catch_unwind`.
+    // REVIEW: From my glance at `Module::new`, the panics occur through debug_assert, so they shouldn't occur in
+    //         release mode. It might be a good idea to use `#[cfg(debug_assertions)]` to have two different versions of
+    //         this code so that catch_unwind doesn't have to be used in release mode. But I do think it would be safer
+    //         to just use catch_unwind regardless in case the code ever changes in the future to panic in release mode.
+    let module_unwind_result = catch_unwind(move || {
+        // SAFETY: LLVMModuleRef is coming directly from LLVM, and should be a valid pointer.
+        ManuallyDrop::new(unsafe { Module::new(module) })
+    });
+    let mut module = match module_unwind_result {
+        Ok(module) => module,
+        Err(payload) => {
+            callback.state = IRModuleOpState::Panic(payload);
+            // We aren't using LLVMError, it's not necessary, and only complicates the API.
+            // [https://llvm.org/doxygen/ThreadSafeModule_8h_source.html#l00113]
+            // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l00744]
+            return ptr::null_mut();
+        },
+    };
+    // If `generic_ir_module_operation` is used correctly, this match should never fail. The [IRModuleOperation] `state`
+    // is expected to be assigned [IRModuleOpState::Func] when initialized, and this is the first place where the value
+    // is mutated.
+    if let IRModuleOpState::Func(func) = callback.state.take() {
         let unwind_result = catch_unwind(move || {
             func(&mut module)
         });
-        callback.return_value = Some(unwind_result);
+        callback.state = match unwind_result {
+            Ok(ret) => IRModuleOpState::Return(ret),
+            Err(payload) => IRModuleOpState::Panic(payload),
+        };
+    } else {
+        // This is how the `with_module_do` (or whatever function that uses this) is notified of this specific failure.
+        callback.state = IRModuleOpState::MissingFunc;
     }
     // We aren't using LLVMError, it's not necessary, and only complicates the API.
     // [https://llvm.org/doxygen/ThreadSafeModule_8h_source.html#l00113]
@@ -146,32 +190,45 @@ impl ThreadSafeModule {
         // [https://llvm.org/doxygen/OrcV2CBindings_8cpp_source.html#l00744]
         // Documentation:
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga91c2fe589434e8b16812b5e8d42cf9c6]
-        let mut op = IrModuleOperation {
-            func: Some(f),
-            return_value: None,
+        let mut op = IRModuleOperation {
+            state: IRModuleOpState::Func(f),
         };
-        unsafe {
-            // This result should always be null. According to the LLVM source code, it wouldn't make sense for it to be
-            // non-null, as the error is user provided, and we aren't providing an error value
-            // (`generic_ir_module_operation` returns null_mut).
-            let result = LLVMOrcThreadSafeModuleWithModuleDo(
+        // This result should always be null. According to the LLVM source code, it wouldn't make sense for it to be
+        // non-null, as the error is user provided, and we aren't providing an error value
+        // (`generic_ir_module_operation` returns null_mut).
+        let result = unsafe {
+            LLVMOrcThreadSafeModuleWithModuleDo(
                 self.as_ptr(),
                 generic_ir_module_operation::<F, R>,
                 // I know this looks weird, but the second cast is necessary.
                 &mut op as *mut _ as *mut _,
-            );
-            assert!(result.is_null(), "LLVMError was not null, which is unexpected.\nFile: {}:{}", file!(), line!());
-            let Some(result) = op.return_value else {
-                // If this error occurs, that means that the code that was supposed to set the return_value was
-                // modified. Or otherwise something that I couldn't anticipate has happened.
-                // A likely cause for this error is the `IRModuleOperation.func` field being `None` when passed as
-                // a context to the generic_ir_module_operation function.
-                panic!("Return value was None, which is unexpected.\nFile: {}:{}", file!(), line!());
-            };
-            match result {
-                Ok(return_value) => return_value,
-                Err(payload) => resume_unwind(payload),
+            )
+        };
+        debug_assert!(
+            result.is_null(),
+            "LLVMError was not null, which is unexpected.\nFile: {}:{}", file!(), line!(),
+        );
+        match op.state {
+            // The below panic states are anticipated to never occur, but exist as a means of assurance.
+            IRModuleOpState::Taken => {
+                // At the moment of writing this, I am pretty sure there is no path for this error to occur.
+                panic!("IRModuleOpState value was taken, but not replaced.");
+            },
+            IRModuleOpState::Func(_) => {
+                // If this error occurs, I'm really not entirely sure what happened. Probably someone changed the
+                // code in `generic_ir_module_operation`.
+                panic!("IRModuleOpState function was never taken.");
+            },
+            IRModuleOpState::MissingFunc => {
+                // If this error occurs, it likely means that the `state` field of `IRModuleOperation` was never
+                // assigned to `IRModuleState::Func`, which happens near the beginning of this function.
+                panic!("The IRModuleOpState value was expected to be the Func variant, but was something else.");
             }
+            // Panic caught by catch_unwind.
+            // REVIEW: Should this maybe be an Err, and this function return a Result?
+            //         Or perhaps it makes more sense to resume the panic.
+            IRModuleOpState::Panic(payload) => resume_unwind(payload),
+            IRModuleOpState::Return(ret) => ret,
         }
     }
 }
