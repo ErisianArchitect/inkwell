@@ -66,8 +66,6 @@ impl<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R, R> IRModuleOpState<F, R> {
 }
 
 /// A utility struct that stores a [FnOnce] closure, and receives the return value of the function.
-/// The return value that is stored in a `Result<R, Box<dyn Any + Send + 'static>>`. The error is a [catch_unwind] panic
-/// payload. [ThreadSafeModule::with_module_do] will resume the panic if the return value is `Err(payload)`.
 #[derive(Debug)]
 pub(crate) struct IRModuleOperation<F: for<'ctx> FnOnce(&mut Module<'ctx>) -> R + UnwindSafe, R> {
     pub(crate) state: IRModuleOpState<F, R>,
