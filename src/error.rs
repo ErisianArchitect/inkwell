@@ -1,8 +1,7 @@
 use ::core::{
-    convert::Infallible,
     ffi::{CStr, c_char},
     mem::ManuallyDrop,
-    ptr::{self, NonNull},
+    ptr::{NonNull},
 };
 
 use ::std::borrow::Cow;
