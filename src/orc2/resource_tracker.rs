@@ -39,7 +39,7 @@ impl ResourceTracker {
     /// [LLVMOrcResourceTrackerRef].
     #[must_use]
     #[inline(always)]
-    pub unsafe fn from_raw_unchekced(ptr: LLVMOrcResourceTrackerRef) -> Self {
+    pub unsafe fn from_raw_unchecked(ptr: LLVMOrcResourceTrackerRef) -> Self {
         Self {
             ptr: unsafe { NonNull::new_unchecked(ptr) },
         }
