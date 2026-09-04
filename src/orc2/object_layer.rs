@@ -24,7 +24,7 @@ use crate::{
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ObjectLayerImpl {
+pub struct ObjectLayerImpl {
     pub(crate) ptr: NonNull<LLVMOrcOpaqueObjectLayer>,
 }
 
