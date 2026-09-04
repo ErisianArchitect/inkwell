@@ -44,7 +44,7 @@ impl<'lljit> JITDylibRef<'lljit> {
     /// [LLVMOrcJITDylibRef].
     #[must_use]
     #[inline(always)]
-    pub unsafe fn from_raw_unchekced(ptr: LLVMOrcJITDylibRef) -> Self {
+    pub unsafe fn from_raw_unchecked(ptr: LLVMOrcJITDylibRef) -> Self {
         Self {
             ptr: unsafe { NonNull::new_unchecked(ptr) },
             _phantom: PhantomData,
