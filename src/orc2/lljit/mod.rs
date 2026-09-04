@@ -153,6 +153,13 @@ impl LLJIT {
         }
     }
 
+    /// Install the plugin that submits debug objects to the executor.
+    pub fn enable_debug_support(&self) -> Result<(), LLVMError> {
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJITUtils.html#gad4f9c3426eda5cfd39e7a8d37f9e3951]
+        LLVMError::result_from_error_ref(unsafe { LLVMOrcLLJITEnableDebugSupport(self.as_ptr()) })
+    }
+
     /// Return a reference to the Main JITDylib.
     pub fn get_main_jit_dylib(&self) -> JITDylibRef<'_> {
         // Documentation:
