@@ -37,7 +37,7 @@ pub use thread_safe_module::*;
     [x]: LLVMOrcDisposeLLJIT
     [x]: LLVMOrcLLJITGetGlobalPrefix
     [x]: LLVMOrcLLJITGetMainJITDylib
-    [ ]: LLVMOrcLLJITEnableDebugSupport
+    [x]: LLVMOrcLLJITEnableDebugSupport
     [ ]: LLVMOrcLLJITGetObjectLinkingLayer
     [ ]: LLVMOrcLLJITGetExecutionSession
     [ ]: LLVMOrcLLJITGetIRTransformLayer
