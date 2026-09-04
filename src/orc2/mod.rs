@@ -2,6 +2,7 @@ mod dump_objects;
 mod enums;
 mod indirect_stubs_manager;
 mod jit_dylib;
+mod object_layer;
 mod resource_tracker;
 mod target_machine_builder;
 mod thread_safe_context;
@@ -13,6 +14,7 @@ pub use dump_objects::*;
 pub use enums::*;
 pub use indirect_stubs_manager::*;
 pub use jit_dylib::*;
+pub use object_layer::*;
 pub use resource_tracker::*;
 pub use target_machine_builder::*;
 pub use thread_safe_context::*;
@@ -38,7 +40,7 @@ pub use thread_safe_module::*;
     [x]: LLVMOrcLLJITGetGlobalPrefix
     [x]: LLVMOrcLLJITGetMainJITDylib
     [x]: LLVMOrcLLJITEnableDebugSupport
-    [ ]: LLVMOrcLLJITGetObjectLinkingLayer
+    [ ]: LLVMOrcLLJITGetObjLinkingLayer
     [ ]: LLVMOrcLLJITGetExecutionSession
     [ ]: LLVMOrcLLJITGetIRTransformLayer
     [ ]: LLVMOrcLLJITGetObjTransformLayer
