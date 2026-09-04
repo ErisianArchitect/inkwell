@@ -3,6 +3,9 @@ use ::core::{
     ptr::{
         NonNull,
     },
+    mem::{
+        ManuallyDrop,
+    },
 };
 
 use ::llvm_sys::{
@@ -75,15 +78,16 @@ impl ResourceTracker {
         LLVMError::result_from_error_ref(unsafe { LLVMOrcResourceTrackerRemove(self.as_ptr()) })
     }
 
-    /// Transfers tracking of all resources associated with this [ResourceTracker] to the `dest` [ResourceTracker].
-    pub fn transfer_to(&self, dest: &Self) {
+    /// Transfers tracking of all resources associated with the `source` [ResourceTracker] into this [ResourceTracker].
+    pub fn transfer_from(&self, source: Self) {
         // The execution session is locked internally, making this function thread-safe.
-        // Ownership of `self` is not taken, only tracking is transferred.
+        // The source is made defunct after transfer, which renders it unusable. It is the responsibility of the
+        // API-user to release the resource tracker. So we let it go out of scope to automatically drop.
         // C++ source code:
         // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/Core.cpp#L2213]
         // Documentation:
         // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga344ed46e53d6f5bbeeb3786e73598115]
-        unsafe { LLVMOrcResourceTrackerTransferTo(self.as_ptr(), dest.as_ptr()); }
+        unsafe { LLVMOrcResourceTrackerTransferTo(source.as_ptr(), self.as_ptr()); }
     }
 }
 
