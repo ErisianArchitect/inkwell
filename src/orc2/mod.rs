@@ -2,6 +2,7 @@ mod dump_objects;
 mod enums;
 mod indirect_stubs_manager;
 mod jit_dylib;
+mod resource_tracker;
 mod target_machine_builder;
 mod thread_safe_context;
 mod thread_safe_module;
@@ -12,6 +13,7 @@ pub use dump_objects::*;
 pub use enums::*;
 pub use indirect_stubs_manager::*;
 pub use jit_dylib::*;
+pub use resource_tracker::*;
 pub use target_machine_builder::*;
 pub use thread_safe_context::*;
 pub use thread_safe_module::*;
@@ -63,7 +65,7 @@ pub use thread_safe_module::*;
     [x]: LLVMOrcCreateLocalIndirectStubsManager
     [x]: LLVMOrcDisposeIndirectStubsManager
 [ ]: LLVMOrcJITDylibRef
-    [ ]: LLVMOrcJITDylibClear
+    [x]: LLVMOrcJITDylibClear
     [ ]: LLVMOrcJITDylibCreateResourceTracker
     [ ]: LLVMOrcJITDylibDefine
     [ ]: LLVMOrcJITDylibAddGenerator
@@ -107,6 +109,8 @@ pub use thread_safe_module::*;
 [ ]: LLVMOrcObjectTransformLayerRef
     [ ]: LLVMOrcObjectTransformLayerSetTransform
 [ ]: LLVMOrcResourceTrackerRef
+    [ ]: LLVMOrcResourceTrackerRemove
+    [ ]: LLVMOrcReleaseResourceTracker
 [ ]: LLVMOrcSymbolStringPoolEntryRef
     [ ]: LLVMOrcRetainSymbolStringPoolEntry
     [ ]: LLVMOrcReleaseSymbolStringPoolEntry
