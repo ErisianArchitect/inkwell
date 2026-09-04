@@ -47,7 +47,7 @@ pub use thread_safe_module::*;
     [ ]: LLVMOrcLLJITAddObjectFile
     [ ]: LLVMOrcLLJITAddLLVMIRModule
     [ ]: LLVMOrcLLJITMangleAndIntern
-    [ ]: LLVMOrcLLJITAddObjectFileWithRT
+    [x]: LLVMOrcLLJITAddObjectFileWithRT
     [ ]: LLVMOrcLLJITAddLLVMIRModuleWithRT
     [ ]: LLVMOrcLLJITLookup
 [ ]: LLVMOrcDefinitionGeneratorRef
@@ -108,9 +108,10 @@ pub use thread_safe_module::*;
 [ ]: LLVMOrcObjectLinkingLayerRef
 [ ]: LLVMOrcObjectTransformLayerRef
     [ ]: LLVMOrcObjectTransformLayerSetTransform
-[ ]: LLVMOrcResourceTrackerRef
-    [ ]: LLVMOrcResourceTrackerRemove
-    [ ]: LLVMOrcReleaseResourceTracker
+[x]: LLVMOrcResourceTrackerRef
+    [x]: LLVMOrcResourceTrackerRemove
+    [x]: LLVMOrcReleaseResourceTracker
+    [x]: LLVMOrcResourceTrackerTransferTo
 [ ]: LLVMOrcSymbolStringPoolEntryRef
     [ ]: LLVMOrcRetainSymbolStringPoolEntry
     [ ]: LLVMOrcReleaseSymbolStringPoolEntry
