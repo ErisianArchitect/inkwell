@@ -4,6 +4,9 @@ pub use builder::*;
 
 use ::core::{
     ptr::NonNull,
+    mem::{
+        ManuallyDrop,
+    },
     ffi::{
         c_char,
     },
@@ -35,7 +38,9 @@ use crate::{
     error::LLVMError,
     orc2::{
         JITDylibRef,
+        ResourceTracker,
     },
+    memory_buffer::MemoryBuffer,
 };
 
 /// A high-level JIT (Just-In-Time) compiler utility built on top of LLVM's ORC (On-Request-Compilation) V2
@@ -159,6 +164,25 @@ impl LLJIT {
             ptr,
             _phantom: PhantomData,
         }
+    }
+
+    /// Add a [MemoryBuffer] representing an object file to the JITDylib of a [ResourceTracker] within this [LLJIT].
+    pub fn add_object_file_with_rt(&self, rt: &ResourceTracker, obj_buffer: MemoryBuffer) -> Result<(), LLVMError> {
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#gaf339bd658910e2d596bf8cf93ebf5d39]
+        // I dug through the LLVM source code to find exactly how this works, and when you get down to the bottom layer,
+        // it's locking the execution session before performing the changes, so this is thread-safe.
+        // Additionally, it appears that MemoryBuffer is wrapped in a unique_ptr, and this function takes ownership of
+        // it. This is also verified by the documentation linked above.
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/OrcV2CBindings.cpp#L973]
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/LLJIT.cpp#L927]
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/Layer.cpp#L180]
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/Layer.cpp#L171]
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/include/llvm/ExecutionEngine/Orc/Core.h#L1882]
+        let obj_buffer = ManuallyDrop::new(obj_buffer);
+        LLVMError::result_from_error_ref(
+            unsafe { LLVMOrcLLJITAddObjectFileWithRT(self.as_ptr(), rt.as_ptr(), obj_buffer.as_mut_ptr()) }
+        ) 
     }
 }
 
