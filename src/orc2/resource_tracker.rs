@@ -28,7 +28,7 @@ use crate::{
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ResourceTracker {
-    ptr: NonNull<LLVMOrcOpaqueResourceTracker>,
+    pub(crate) ptr: NonNull<LLVMOrcOpaqueResourceTracker>,
 }
 
 impl ResourceTracker {
