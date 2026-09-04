@@ -125,6 +125,15 @@ impl LLVMError {
         NonNull::new(error).map(|ptr| Self { ptr })
     }
 
+    /// Pass an [LLVMErrorRef] returned from an LLVM function. You do not need to perform a null check on the
+    /// [LLVMErrorRef], this function does so for you, and returns [Ok] if it was null, and [Err] if there is an error.
+    pub fn result_from_error_ref(error: LLVMErrorRef) -> Result<(), Self> {
+        match Self::from_error_ref(error) {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
     /// Returns the inner [LLVMErrorRef].
     ///
     /// # NOTE
