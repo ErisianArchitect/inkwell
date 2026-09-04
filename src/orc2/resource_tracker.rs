@@ -9,6 +9,15 @@ use ::llvm_sys::{
     orc2::{
         LLVMOrcResourceTrackerRef,
         LLVMOrcOpaqueResourceTracker,
+        LLVMOrcResourceTrackerRemove,
+        LLVMOrcReleaseResourceTracker,
+        LLVMOrcResourceTrackerTransferTo,
+    },
+};
+
+use crate::{
+    error::{
+        LLVMError,
     },
 };
 
@@ -54,5 +63,32 @@ impl ResourceTracker {
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcResourceTrackerRef {
         self.ptr.as_ptr()
+    }
+
+    /// Remove all resources associated with this [ResourceTracker].
+    pub fn remove(&self) -> Result<(), LLVMError> {
+        // removeResourceTracker locks the ExecutionSession, which makes this function thread-safe.
+        // C++ source code:
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/Core.cpp#L2181]
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#gaeb2dc0257d714c0c7ba3d8ceb796cd35]
+        LLVMError::result_from_error_ref(unsafe { LLVMOrcResourceTrackerRemove(self.as_ptr()) })
+    }
+
+    /// Transfers tracking of all resources associated with this [ResourceTracker] to the `dest` [ResourceTracker].
+    pub fn transfer_to(&self, dest: &Self) {
+        // The execution session is locked internally, making this function thread-safe.
+        // Ownership of `self` is not taken, only tracking is transferred.
+        // C++ source code:
+        // [https://github.com/llvm/llvm-project/blob/2078da43e25a4623cab2d0d60decddf709aaea28/llvm/lib/ExecutionEngine/Orc/Core.cpp#L2213]
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga344ed46e53d6f5bbeeb3786e73598115]
+        unsafe { LLVMOrcResourceTrackerTransferTo(self.as_ptr(), dest.as_ptr()); }
+    }
+}
+
+impl Drop for ResourceTracker {
+    fn drop(&mut self) {
+        unsafe { LLVMOrcReleaseResourceTracker(self.as_ptr()) }
     }
 }
