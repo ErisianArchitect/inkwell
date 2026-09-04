@@ -113,7 +113,7 @@ impl Drop for LLVMErrorMessage {
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct LLVMError {
-    ptr: NonNull<LLVMOpaqueError>,
+    pub(crate) ptr: NonNull<LLVMOpaqueError>,
 }
 const _: () = crate::support::assert_niche::<LLVMError>();
 
