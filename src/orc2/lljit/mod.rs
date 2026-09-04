@@ -21,7 +21,7 @@ use ::llvm_sys::orc2::lljit::{
     LLVMOrcLLJITGetGlobalPrefix,
     LLVMOrcLLJITGetMainJITDylib,
     LLVMOrcLLJITEnableDebugSupport,
-    LLVMOrcLLJITGetObjectLinkingLayer,
+    LLVMOrcLLJITGetObjLinkingLayer,
     LLVMOrcLLJITGetExecutionSession,
     LLVMOrcLLJITGetIRTransformLayer,
     LLVMOrcLLJITGetObjTransformLayer,
@@ -39,6 +39,8 @@ use crate::{
     orc2::{
         JITDylibRef,
         ResourceTracker,
+        ObjectLayer,
+        ObjectLayerRef,
     },
     memory_buffer::MemoryBuffer,
 };
@@ -169,6 +171,20 @@ impl LLJIT {
         };
         JITDylibRef {
             ptr,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Return a reference to the object linking layer of this [LLJIT].
+    pub fn get_obj_linking_layer(&self) -> ObjectLayerRef<'_> {
+        // Documentation:
+        // [https://llvm.org/doxygen/group__LLVMCExecutionEngineLLJIT.html#ga2f34a780b7aeb1d66bda42a6090b887f]
+        let ptr = unsafe { LLVMOrcLLJITGetObjLinkingLayer(self.as_ptr()) };
+        let Some(ptr) = NonNull::new(ptr) else {
+            crate::support::panic_out_of_memory_error(file!(), line!(), "Unable to get ObjectLayer from LLJIT.");
+        };
+        ObjectLayerRef {
+            inner: super::ObjectLayerImpl { ptr },
             _phantom: PhantomData,
         }
     }
