@@ -40,7 +40,7 @@ pub use thread_safe_module::*;
     [x]: LLVMOrcLLJITGetGlobalPrefix
     [x]: LLVMOrcLLJITGetMainJITDylib
     [x]: LLVMOrcLLJITEnableDebugSupport
-    [ ]: LLVMOrcLLJITGetObjLinkingLayer
+    [x]: LLVMOrcLLJITGetObjLinkingLayer
     [ ]: LLVMOrcLLJITGetExecutionSession
     [ ]: LLVMOrcLLJITGetIRTransformLayer
     [ ]: LLVMOrcLLJITGetObjTransformLayer
