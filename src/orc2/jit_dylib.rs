@@ -13,10 +13,14 @@ use ::llvm_sys::{
     orc2::{
         LLVMOrcOpaqueJITDylib,
         LLVMOrcJITDylibRef,
+        LLVMOrcJITDylibClear,
     },
 };
 
 use crate::{
+    error::{
+        LLVMError,
+    },
     orc2::{
         lljit::LLJIT,
     },
@@ -69,5 +73,19 @@ impl<'lljit> JITDylibRef<'lljit> {
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMOrcJITDylibRef {
         self.ptr.as_ptr()
+    }
+
+    /// Calls `remove` on each [ResourceTracker] associated with this [JITDylibRef].
+    ///
+    /// [ResourceTracker]: crate::orc2::ResourceTracker
+    pub fn clear(&self) -> Result<(), LLVMError>{
+        unsafe {
+            // Documentation:
+            // [https://llvm.org/doxygen/group__LLVMCExecutionEngineORC.html#ga70d348a9a92c5113b01acbd8d95fc977]
+            if let Some(error) = LLVMError::from_error_ref(LLVMOrcJITDylibClear(self.as_ptr())) {
+                return Err(error);
+            }
+            Ok(())
+        }
     }
 }
