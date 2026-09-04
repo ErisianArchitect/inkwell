@@ -118,6 +118,7 @@ pub struct LLVMError {
 const _: () = crate::support::assert_niche::<LLVMError>();
 
 impl LLVMError {
+    // REVIEW: Perhaps from_error_ref should be marked `unsafe`?
     /// Pass an [LLVMErrorRef] returned from an LLVM function. You do not need to perform a null check on the
     /// [LLVMErrorRef], this function does so for you, and returns `None` if it was null.
     pub fn from_error_ref(error: LLVMErrorRef) -> Option<Self> {
@@ -126,7 +127,8 @@ impl LLVMError {
 
     /// Returns the inner [LLVMErrorRef].
     ///
-    /// NOTE: [LLVMErrorRef] is a transparent wrapper around this pointer.
+    /// # NOTE
+    /// [LLVMErrorRef] is a transparent wrapper around this pointer.
     #[must_use]
     #[inline(always)]
     pub fn as_ptr(&self) -> LLVMErrorRef {
