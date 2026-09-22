@@ -189,6 +189,18 @@ impl LLJIT {
         }
     }
 
+    /// Add a [MemoryBuffer] representing an object file to the [JitDylibRef] in this [LLJIT] instance.
+    pub fn add_object_file(&self, jd: JITDylibRef<'_>, obj_file: MemoryBuffer) -> Result<(), LLVMError> {
+        // Documentation:
+        // [https://llvm.org/docs/doxygen/group__LLVMCExecutionEngineLLJIT.html#ga13885d6a19957859bfd412b359796eba]
+        // Source Code: (version 22.1.8)
+        // [https://github.com/llvm/llvm-project/blob/ca7933e47d3a3451d81e72ac174dcb5aa28b59d1/llvm/lib/ExecutionEngine/Orc/OrcV2CBindings.cpp#L969]
+        let obj_file = ManuallyDrop::new(obj_file);
+        LLVMError::result_from_error_ref(unsafe {
+            LLVMOrcLLJITAddObjectFile(self.as_ptr(), jd.as_ptr(), obj_file.as_mut_ptr())
+        })
+    }
+
     /// Add a [MemoryBuffer] representing an object file to the JITDylib of a [ResourceTracker] within this [LLJIT].
     pub fn add_object_file_with_rt(&self, rt: &ResourceTracker, obj_buffer: MemoryBuffer) -> Result<(), LLVMError> {
         // Documentation:
@@ -205,7 +217,7 @@ impl LLJIT {
         let obj_buffer = ManuallyDrop::new(obj_buffer);
         LLVMError::result_from_error_ref(
             unsafe { LLVMOrcLLJITAddObjectFileWithRT(self.as_ptr(), rt.as_ptr(), obj_buffer.as_mut_ptr()) }
-        ) 
+        )
     }
 }
 
