@@ -47,7 +47,7 @@ pub use thread_safe_module::*;
     [ ]: LLVMOrcLLJITGetObjTransformLayer
     [x]: LLVMOrcLLJITGetTripleString
     [x]: LLVMOrcLLJITGetDataLayoutStr
-    [ ]: LLVMOrcLLJITAddObjectFile
+    [x]: LLVMOrcLLJITAddObjectFile
     [ ]: LLVMOrcLLJITAddLLVMIRModule
     [ ]: LLVMOrcLLJITMangleAndIntern
     [x]: LLVMOrcLLJITAddObjectFileWithRT
